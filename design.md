@@ -8,6 +8,7 @@ Lo marcado como **(propuesto)** no fue discutido todavía: se puede cambiar ante
 
 - RF-01 Login diferenciado por rol
 - RF-02 Restricción de funcionalidades sensibles según rol
+- RF-03	Gestion de usuarios
 - NFR-03 Seguridad
 - Pendiente de agregar a `requirements.md`: gestión de usuarios (crear, editar, desactivar) por parte del admin.
 
@@ -60,11 +61,14 @@ Convenciones generales: respuestas `{ ok, msg, error? }` como en `AGENTS.md`.
 **Primer admin:** como no hay registro abierto, el primer admin se crea con un script (`scripts/crear-admin.js`) que lee nombre, email y contraseña desde variables de entorno o argumentos. No debe quedar ninguna contraseña en el repositorio.
 
 ### Endpoints de esta fase
+Fase 1 28/09/2026
 
 | Método | Ruta | Acceso | Descripción |
 |---|---|---|---|
-| POST | `/api/auth/login` | público | Recibe `email` y `password`, devuelve token y datos del usuario |
+| POST | `/api/auth/login` | público | Recibe `email` y `password`, devuelve token con informacion esencial cifrada y datos del usuario |
 | GET | `/api/auth/perfil` | cualquier rol autenticado | Devuelve el usuario del token (para que el frontend recupere la sesión) |
+
+Posterior a esta fase porfavor acutalizar este documento con los siguientes pasos crud de auth (Los endpoints de gestión de usuarios (`/api/usuarios`, solo admin) con get, post, put, y delete)
 
 **POST `/api/auth/login`**
 
@@ -92,8 +96,6 @@ Los endpoints de gestión de usuarios (`/api/usuarios`, solo admin) se diseñan 
 - **Casos obligatorios de auth:**
   - login correcto
   - contraseña incorrecta
-  - email inexistente
-  - usuario desactivado
   - campos faltantes o email mal formado
   - petición sin token, con token inválido y con token expirado
   - rol insuficiente (403) y rol permitido (200)
@@ -105,11 +107,7 @@ Los endpoints de gestión de usuarios (`/api/usuarios`, solo admin) se diseñan 
 
 No se implementa hasta que el login del backend esté probado y exista el `AGENTS.md` del frontend. Valores por defecto (propuesto): Vite + React, React Router, Context API para la sesión, rutas protegidas según el rol del usuario.
 
-## 7. Preguntas abiertas
+## 7. Desiciones a implementar
 
-- Expiración del token: ¿8 horas está bien, o prefieres otra?
-- ¿Se necesita refresh token? (propuesto: no)
-- ¿El usuario puede cambiar su propia contraseña, o solo el admin la restablece? (propuesto: solo el admin la restablece; sin recuperación por correo)
+- El usuario puede cambiar su propia contraseña con recuperación por correo
 - Bloqueo por intentos fallidos de login: fuera de alcance por ahora.
-- Sistema de estilos del frontend.
-- Confirmación institucional sobre lo que ve el visitante.

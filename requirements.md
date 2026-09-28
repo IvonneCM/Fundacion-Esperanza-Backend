@@ -10,15 +10,19 @@ El sistema deberá autenticar usuarios mediante JWT y determinar, según su rol,
 
 **RF-02 — Restricción de funcionalidades sensibles**
 El sistema deberá restringir funcionalidades sensibles (validación de extracciones OCR, administración de insumos) únicamente a los roles autorizados.
-*Criterio:* un intento de acceso a un endpoint protegido sin el permiso correspondiente responde con estado 403.
+*Criterio:* un intento de acceso a un endpoint protegido sin el permiso correspondiente responde con estado 403 y todo usuario tiene que entrar autenticandose.
+
+**RF-03 — Gestion de usuarios**
+Gestión de usuarios (crear, editar, desactivar) por parte del administrador con un un rol respectivo.
+*Criterio:* Todo administrador debe autenticarse previamente para acceder al módulo de gestión y las acciones de crear, editar o desactivar usuarios solo pueden ejecutarse si el token o sesión cuenta con el rol de administrador asignado; cualquier intento de manipulación por un usuario sin privilegios responde con un estado 403.
 
 **RF-03 — Registro y carga de documentos digitalizados**
 El sistema deberá permitir subir una imagen ya digitalizada y crear su registro correspondiente.
-*Criterio:* al subir un archivo válido (jpg/png/pdf), el sistema crea un registro en estado "cargado, pendiente de OCR" y devuelve su identificador.
+*Criterio:* se debe seleccionar un tipo de documento antes de subir (proponer un codigo con el que se guarde el archivo segun el tipo y la fecha, el usuario podra editar esta, o elegir quedarse con el nombre del archivo original), al subir un archivo válido (jpg/png/pdf), el sistema crea un registro en estado "cargado, pendiente de OCR" y devuelve su identificador.
 
 **RF-04 — Vinculación de metadatos según tipo de documento**
 El sistema deberá vincular cada documento con su registro de metadatos correspondiente, según su tipo (ficha social, almuerzos, salidas y entradas, referencia social).
-*Criterio:* cada tipo de documento persiste sus metadatos en su propia tabla de extensión, ligada al documento común por clave foránea.
+*Criterio:* cada tipo de documento persiste sus metadatos en su propia tabla de extensión, ligada al documento común por clave foránea. Este paso deberia ser posterior al la carga recibiendo el identificador.
 
 **RF-05 — Flexibilidad de formatos documentales**
 El sistema deberá reconocer y aplicar el conjunto de campos correcto según el tipo de documento seleccionado al momento de la carga.
@@ -33,7 +37,7 @@ El sistema deberá permitir revisar y validar (o corregir) las extracciones medi
 *Criterio:* un usuario con permiso de validación puede aprobar o editar cada campo o fila extraído; al aprobar, el documento pasa a estado "validado".
 
 **RF-08 — Búsqueda de documentos**
-El sistema deberá permitir la búsqueda de documentos por texto completo (contenido OCR) y por metadatos.
+El sistema deberá permitir la búsqueda de documentos por texto completo (contenido OCR) y por metadatos. Más que todo centrando la búsqueda en ciertos campos según el tipo y permitiendo poner filtros.
 *Criterio:* una búsqueda por palabra clave devuelve los documentos cuyo texto extraído o campos de metadatos coinciden con el término buscado.
 
 **RF-09 — Consulta y visualización remota**

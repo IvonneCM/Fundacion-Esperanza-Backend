@@ -10,7 +10,6 @@ Lo marcado como **(propuesto)** no fue discutido todavía: se puede cambiar ante
 - RF-02 Restricción de funcionalidades sensibles según rol
 - RF-03	Gestion de usuarios
 - NFR-03 Seguridad
-- Pendiente de agregar a `requirements.md`: gestión de usuarios (crear, editar, desactivar) por parte del admin.
 
 ## 2. Roles y permisos
 
@@ -90,7 +89,9 @@ Los endpoints de gestión de usuarios (`/api/usuarios`, solo admin) se diseñan 
 
 - **Herramientas:** Jest + Supertest.
 - **Separar la app del arranque:** `app.js` crea y exporta la aplicación Express; `server.js` solo hace `listen`. Así Supertest puede probar rutas sin abrir un puerto.
-- **Base de datos de prueba separada** (`fundacion_test`), configurada con `.env.test`. Las pruebas nunca corren contra la base de desarrollo. Cada suite limpia lo que crea.
+- **Una sola base de datos, la de Neon, descartable.** Mientras el sistema este en desarrollo no hace falta una base de pruebas aparte: `neondb` esta vacia y se puede perder. La separacion con produccion es una decision de configuracion, no de arquitectura.
+- **Un solo `.env`, sin `.env.test`:** la conexion se define en `DATABASE_URL` y se cambia a mano segun el ambiente. La barrera la pone `config/database.js`, que detiene las pruebas cuando `NODE_ENV=test` apunta a una base cuyo nombre no contiene `test`, salvo que `DB_PERMITIR_TEST=true` declare que esa base es desechable. En produccion ese flag va en `false`.
+- **Probar a mano** (Postman, `curl`) contra la base de desarrollo esta permitido: la separacion protege a las pruebas automaticas, no al trabajo diario.
 - **Pruebas unitarias:** funciones de `services/` y `utils/` (con mocks para integraciones externas como S3, Textract o PuLP).
 - **Pruebas de integración:** rutas con Supertest contra la base de prueba.
 - **Casos obligatorios de auth:**

@@ -17,12 +17,29 @@ Stack: Node.js/Express, PostgreSQL (Sequelize), AWS S3 + Textract, microservicio
 2. No instalar dependencias nuevas sin confirmar con la persona a cargo.
 3. No modificar el esquema de base de datos sin reflejarlo primero en `design.md`.
 
+## Secretos
+
+- **Nunca leer, imprimir ni copiar el `.env`.** Es la única fuente de los valores reales. `.env.example` es la plantilla documentada y no tiene secretos.
+- Para verificar la conexión usar `npm run db:probar`, que imprime host, puerto, base, usuario y resultado, y redacta la contraseña. Si hace falta depurar, se cambia el script — no se lee el `.env`.
+- La conexión se define en un único `.env` mediante `DATABASE_URL`. Para cambiar de ambiente se edita esa URL a mano (dev, pruebas o producción); no hay un `.env.test`.
+- `config/database.js` detiene las pruebas cuando `NODE_ENV=test` apunta a una base cuyo nombre no contiene `test`, salvo que `DB_PERMITIR_TEST=true`. Ese flag declara que la base es desechable y sus datos se pueden perder. **En producción debe ser `false`.**
+- Las pruebas corren contra la base a la que apunte `DATABASE_URL`. Antes de `npm test`, correr `npm run db:probar` y confirmar en el aviso qué base va a usarse.
+
+## Cambios en la base de datos
+
+- **El agente nunca escribe en la base de datos.** Todo cambio de esquema, dato o migración lo aplica la persona a cargo, a mano, con el SQL.
+- `Fundacion_Nuestra_Esperanza_create.sql` es la **única fuente de verdad del esquema**. Si el agente necesita saber cómo es una tabla, la lee ahí. No mantener una segunda copia en un script: se desincroniza en silencio.
+- **No crear scripts que hagan `CREATE`, `ALTER`, `DROP`, `INSERT`, `UPDATE` ni `DELETE`** sobre la base. Se eliminó `scripts/inicializar-base.js` por este motivo: duplicaba el SQL, cubría solo 1 de las 14 tablas y abría una vía de escritura innecesaria sobre datos de salud de menores.
+- `npm run db:probar` (`scripts/probar-conexion.js`) sí se puede usar: hace únicamente `SELECT`, nunca escribe.
+- Para hablar con una base remota que no expone su puerto, el agente propone el túnel SSH o el comando de Docker, pero no los ejecuta: los corre la persona a cargo.
+
+
 ## Estructura de carpetas
 
 ```
 config/         → database.js, aws.js
 controllers/    → un archivo por módulo (documental, alimentario, auth)
-middlewares/    → validar-jwt.js, validar-campos.js, validar-permiso.js
+middlewares/    → validar-jwt.js, validar-campos.js, validar-rol.js
 models/         → un archivo por entidad, incluidas las tablas de extensión de documentos
 routes/
 services/       → toda integración externa (S3, Textract, microservicio PuLP) vive aquí
@@ -60,8 +77,9 @@ Nota: no existe una carpeta `helpers/` separada — todo utilitario va en `utils
 ## Autenticación y permisos
 
 - JWT vía middleware `validarJWT`.
-- Autorización granular vía middleware `validarPermiso('NOMBRE_PERMISO')`.
-- Tres roles: voluntario solo lectura, voluntario lectura/inserción/OCR, administrador completo.
+- Autorización por rol vía middleware `validarRol('admin', 'archivista')`.
+- Tres roles: `admin` (todo), `archivista` (documental: subir, validar OCR, buscar, ver; sin acceso al alimentario ni a usuarios) y `visitante` (lectura, y solo documentos validados). El mapa completo está en `design.md` §2 y es la fuente de verdad.
+
 
 ## Testing
 

@@ -16,30 +16,35 @@ Para trabajar con opencode, un prompt tipo: *"Implementa la tarea T-0X de tasks.
   `config/database.js` (Sequelize leyendo `.env`), `.env.example` sin secretos, y separar `app.js` (exporta la app) de `server.js` (hace `listen`).
   *Hecho cuando:* `npm run dev` conecta a la base sin errores y `/api/health` sigue respondiendo.
 
-- [ ] **T-03 — Modelo `Usuario` y script del primer admin**
+- [x] **T-03 — Modelo `Usuario` y script del primer admin**
   `models/Usuario.js` siguiendo `AGENTS.md` (UUID, un campo por línea) y `scripts/crear-admin.js` con bcrypt.
   *Hecho cuando:* ejecutar el script crea un admin, ejecutarlo de nuevo no lo duplica, y en la base el `password_hash` no es la contraseña en texto plano.
 
-- [ ] **T-04 — Login (`POST /api/auth/login`)**
+- [x] **T-04 — Login (`POST /api/auth/login`)**
   `controllers/auth.js`, `routes/auth.js` y validaciones de campos, con los códigos de respuesta de `design.md` §4.
   *Hecho cuando:* desde Postman un login correcto devuelve token y usuario, y los casos 400, 401 y 403 responden como dice el diseño.
 
-- [ ] **T-05 — Middlewares `validarJWT` y `validarRol`, y `GET /api/auth/perfil`**
+- [x] **T-05 — Middlewares `validarJWT` y `validarRol`, y `GET /api/auth/perfil`**
   *Hecho cuando:* una ruta protegida responde 401 sin token o con token inválido, 403 con rol insuficiente y 200 con rol permitido, y `/api/auth/perfil` devuelve el usuario del token.
 
-- [ ] **T-06 — Pruebas de autenticación (Jest + Supertest)**
-  Todos los casos obligatorios de `design.md` §5, contra `fundacion_test`.
+- [~] **T-06 — Pruebas de autenticación (Jest + Supertest)** — **DIFERIDA a mano de la persona a cargo.**
+  Todos los casos obligatorios de `design.md` §5, contra `neondb` (base descartable).
+  *Se difiere porque el alcance del trabajo dirigido de esta parte pide la documentacion de la API (T-07), no la suite de pruebas.* No es una omision: queda para despues de cerrar el trabajo dirigido.
   *Hecho cuando:* `npm test` pasa en verde y no toca la base de desarrollo.
+  *Pendiente:* el caso de rol insuficiente (403) necesita una ruta con `validarRol`. La unica protegida hoy es `/api/auth/perfil`, que acepta cualquier rol. Se resuelve al crear el CRUD de usuarios (T-08).
 
-- [ ] **T-07 — Documentación OpenAPI y colección de Postman**
+- [x] **T-07 — Documentación OpenAPI y colección de Postman**
   `swagger-jsdoc` + `swagger-ui-express` en `/api-docs`, con los endpoints de auth documentados (NFR-04).
   *Hecho cuando:* `/api-docs` permite probar el login, y el `swagger.json` se importa en Postman generando la colección.
 
 ## Fase 2 — Gestión de usuarios (solo admin)
 
 - [ ] **T-08 — CRUD de usuarios (`/api/usuarios`)**
-  Listar, crear, editar y activar/desactivar. Solo `admin`. Requiere agregar el RF correspondiente a `requirements.md`.
-  *Hecho cuando:* un admin puede crear un archivista, y un archivista o visitante recibe 403 en todas esas rutas.
+  Listar, ver, crear, editar y activar/desactivar. Solo `admin`, con `validarJWT` + `validarRol('admin')`.
+  **Diseño ya reflejado en `design.md` §4b.** Alli estan los endpoints, los codigos de respuesta y las reglas de negocio.
+  Puntos a respetar: el email se normaliza a minusculas; un admin no puede desactivar ni degradarse a si mismo; no se puede desactivar al ultimo admin activo; **no hay borrado fisico**; el hash nunca se devuelve.
+  *Hecho cuando:* un admin puede crear un archivista, y un archivista o visitante recibe 403 en todas esas rutas. El 403 por rol se prueba aca, con `validarRol('admin')`: es la primera ruta real con restriction de rol.
+  *Ademas:* documentar estas rutas con anotaciones OpenAPI (§4c), para no romper el swagger ya montado.
 
 - [ ] **T-09 — Pruebas de gestión de usuarios**
   *Hecho cuando:* `npm test` sigue en verde con los casos de permisos y de validación.

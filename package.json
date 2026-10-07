@@ -7,17 +7,23 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "db:probar": "node scripts/probar-conexion.js"
+    "db:probar": "node scripts/probar-conexion.js",
+    "admin:crear": "node scripts/crear-admin.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-validator": "^7.3.2",
+    "jsonwebtoken": "^9.0.3",
     "pg": "^8.11.3",
-    "sequelize": "^6.37.1"
+    "sequelize": "^6.37.1",
+    "swagger-jsdoc": "^6.3.0",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"

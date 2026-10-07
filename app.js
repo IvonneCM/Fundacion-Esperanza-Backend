@@ -1,7 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import swaggerUi from 'swagger-ui-express';
 import saludRouter from './routes/salud.js';
+import authRouter from './routes/auth.js';
+import swaggerDocument from './config/swagger.js';
 
 dotenv.config();
 
@@ -13,5 +16,19 @@ app.use(express.json());
 
 // Rutas
 app.use('/api', saludRouter);
+app.use('/api/auth', authRouter);
+
+// Documentacion de la API (NFR-04): Swagger UI en /api-docs, spec en /api/docs/swagger.json
+app.get('/api/docs/swagger.json', (req, res) => {
+  res.json(swaggerDocument);
+});
+
+app.use(
+  '/api-docs',
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerDocument, {
+    customSiteTitle: 'API Fundacion Nuestra Esperanza'
+  })
+);
 
 export default app;

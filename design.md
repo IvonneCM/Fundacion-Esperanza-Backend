@@ -92,19 +92,30 @@ RF-03. Solo `admin`. Todas las rutas usan `validarJWT` + `validarRol('admin')`.
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| GET | `/api/usuarios` | Listar usuarios. Admite `?rol=` y `?activo=` como filtros opcionales. |
+| GET | `/api/usuarios` | Listar usuarios. Admite `?rol=`, `?activo=`, `?buscar=` y paginación `?pagina=` / `?limite=`. |
 | GET | `/api/usuarios/:id` | Obtener uno. |
 | POST | `/api/usuarios` | Crear. |
 | PUT | `/api/usuarios/:id` | Editar datos y rol. |
 | PATCH | `/api/usuarios/:id/estado` | Activar o desactivar (`{ activo: false }`). |
 
+**Filtros y paginación de `GET /api/usuarios`**
+
+Todos opcionales y combinables:
+
+- `?rol=`: filtra por rol (`admin`, `archivista` o `visitante`). Un valor fuera de esa lista responde 400.
+- `?activo=`: filtra por estado (`true` o `false`). Otro valor responde 400.
+- `?buscar=`: coincidencia parcial, sin distinguir mayúsculas (`ILIKE`), contra `nombre`, `apellido` y `email`.
+- `?pagina=` (default 1) y `?limite=` (default 20, máximo 100): paginan el resultado. Valores no enteros o menores a 1 responden 400.
+- `total` en la respuesta es la cantidad de filas que cumplen los filtros, antes de paginar.
+- Orden fijo: `creado_en DESC`.
+
 **Respuestas**
 
-- `GET /api/usuarios`: 200 `{ ok, msg, total, usuarios: [...] }`.
+- `GET /api/usuarios`: 200 `{ ok, msg, total, pagina, limite, usuarios: [...] }`.
 - `GET /api/usuarios/:id`: 200 con el usuario; 404 si el `id` no existe.
 - `POST`: 201 con el usuario creado; 400 campos inválidos; 409 si el `email` ya existe.
 - `PUT`: 200 con el usuario actualizado; 400; 404; 409 si el `email` cambia a uno ya usado.
-- `PATCH /:id/estado`: 200 con el usuario; 404.
+- `PATCH /:id/estado`: 200 con el usuario; 400 si intenta desactivarse a sí mismo o al último admin activo; 404.
 
 **Reglas de negocio (propuestas)**
 

@@ -2,14 +2,14 @@
 
 ## Estado
 
-**Fase 1 de autenticacion COMPLETA: T-01 a T-05 y T-07 hechos y verificados end-to-end contra Neon.** El admin existe en la base y el login devuelve token. T-06 (Jest) queda diferida por la persona a cargo: el alcance del trabajo dirigido pide la documentacion, no las pruebas. El diseño de T-08 ya esta escrito en `design.md` §4b, asi que la proxima sesion arranca implementando, no definiendo.
+**Fase 1 de autenticacion COMPLETA: T-01 a T-05 y T-07 hechos y verificados end-to-end contra Neon.** El admin existe en la base y el login devuelve token. **T-08 (CRUD de usuarios, solo admin) implementada.** Jest/Supertest (T-06 y T-09) quedan **pospuestos hasta despues de terminar todo el proyecto**, por decision de la persona a cargo: no son prioridad ahora.
 
 ## Base de datos de desarrollo y pruebas
 
 Una sola base, descartable, en Neon. La persona a cargo decidio no crear `fundacion_test`.
 
 - Host `ep-square-moon-b5xcy9hw-pooler.c-7.us-east-2.aws.neon.tech`, base `neondb`, usuario `neondb_owner`, PostgreSQL 18.6, SSL activo.
-- Las 14 tablas del borrador SQL existen. `usuarios` coincide con `design.md` §3 y **tiene 1 fila**: el admin `anita@fundacion.org` (id `29fbbb9c-6d97-46f4-a693-b2627db845fa`, rol `admin`). Las otras 13 siguen en 0 filas.
+- Las 14 tablas del borrador SQL existen. `usuarios` coincide con `design.md` §3 y **tiene 2 filas**: el admin `anita@fundacion.org` (id `29fbbb9c-6d97-46f4-a693-b2627db845fa`, rol `admin`) y un **archivista de prueba** `prueba.t08@fundacion.org` (id `4559ccd4-d16b-4e93-bbdf-19464cdc6c5e`, rol `archivista`, activo) creado para verificar el 403 de T-08. **Hay que borrar el de prueba con SQL** (ver "Siguiente acción concreta"). Las otras 13 tablas siguen en 0 filas.
 - `DB_PERMITIR_TEST=true` en el `.env`. Verificado que el flag esta bien cableado: en `false` el guard bloquea, en `true` deja pasar.
 - `npm run db:probar` lista los objetos del schema `public` y el detalle de `usuarios` (columnas y restricciones). Solo hace `SELECT`.
 - **La region `us-east-2` (Ohio) se queda asi.** Produccion vive en el VPS, no en Neon; los saltos de latencia no afectan a nadie. Decision cerrada, no volver a abrirla.
@@ -54,41 +54,54 @@ Una sola base, descartable, en Neon. La persona a cargo decidio no crear `fundac
 - **Verificado:** el spec devuelve 200 con los 2 paths, 3 esquemas, y `security: [bearerAuth]` en `/perfil`. Swagger UI responde 200 con el HTML de la interfaz.
 - **Verificado end-to-end contra Neon:** login 200 con token, `/perfil` 200 con rol `admin`, token invalido 401, email mal formado 400. `password_hash` **no aparece** en ninguna respuesta.
 
+### T-08 (gestion de usuarios, RF-03)
+
+- `controllers/usuarios.js`: `getUsuarios`, `getUsuario`, `crearUsuario`, `actualizarUsuario`, `cambiarEstado`. Todos con `try/catch` y respuesta `{ ok, msg, error? }`.
+- `routes/usuarios.js`: `router.use(validarJWT, validarRol('admin'))` aplica a las 5 rutas. Cadenas `express-validator` + `validarCampos` + anotaciones `@openapi`.
+- `utils/usuario-publico.js`: `usuarioPublico(usuario)` → `{ id, nombre, apellido, email, rol, activo, creado_en }`. Se usa en las respuestas de gestion; el hash nunca sale.
+- `app.js` monta `/api/usuarios`.
+- `config/swagger.js`: tag `Usuarios` y esquemas `UsuarioAdmin`, `UsuarioCrear`, `UsuarioEditar`, `UsuarioEstado`.
+- **Filtros y paginacion de `GET /api/usuarios`** (reflejados en `design.md` §4b): `?rol=`, `?activo=`, `?buscar=` (ILIKE en nombre/apellido/email), `?pagina=` (default 1) y `?limite=` (default 20, maximo 100). Orden fijo `creado_en DESC`. `total` es el conteo antes de paginar.
+- **Verificado end-to-end contra Neon:** crear archivista 201, email duplicado 409, falta de password 400, auto-degradacion del admin 400, auto-desactivacion del admin 400, archivista recibe **403** en las 5 rutas, editar 200, email a uno usado 409, desactivar/reactivar 200, id inexistente 404. La lista no expone `password_hash`.
+
 ## Siguiente acción concreta
 
 ### Lo que tiene que hacer la persona a cargo
 
-1. **Corregir el apellido del admin (SQL).**
+1. **Borrar el usuario de prueba de T-08 (SQL).** Quedo creado para verificar el 403 por rol:
+   ```sql
+   DELETE FROM usuarios WHERE email = 'prueba.t08@fundacion.org';
+   ```
+   Se borra a mano porque la API no tiene `DELETE` por diseño (`design.md` §4b).
+2. **Corregir el apellido del admin (SQL).**
    Al crear el admin, `ADMIN_APELLIDO` traia un apostrofo sobrante y quedo guardado como `"Perez"'` (con comilla y apostrofo). El codigo esta bien; el dato esta mal.
    ```sql
    UPDATE usuarios SET apellido = 'Perez' WHERE email = 'anita@fundacion.org';
    ```
-2. **Cambiar la contraseña del admin antes de produccion.** Se compartio en texto plano por chat (`anita0709`). En Neon da igual porque la base es descartable, pero si esa misma contrasena llega al VPS hay que rotarla.
-3. **Decidir si se protege `/api-docs` o se retira antes de produccion.** Hoy es publico.
-4. **Enviar los datos del VPS** si se quiere desbloquear el modulo documental: IP, usuario SSH, metodo de auth, y si Postgres tiene `ports:` en el compose. Ver seccion "Bloqueo actual" mas abajo.
+3. **Cambiar la contraseña del admin antes de produccion.** Se compartio en texto plano por chat (`anita0709`). En Neon da igual porque la base es descartable, pero si esa misma contrasena llega al VPS hay que rotarla.
+4. **Decidir si se protege `/api-docs` o se retira antes de produccion.** Hoy es publico.
+5. **Enviar los datos del VPS** si se quiere desbloquear el modulo documental: IP, usuario SSH, metodo de auth, y si Postgres tiene `ports:` en el compose. Ver seccion "Bloqueo actual" mas abajo.
 
 ### Lo que hace el agente en la proxima sesion
 
-**T-08 — CRUD de usuarios (`/api/usuarios`), solo admin.**
+**T-08 quedo terminada.** La Fase 2 (gestion de usuarios) esta cerrada salvo T-09, que esta pospuesta.
 
-El diseño ya esta escrito en `design.md` §4b: endpoints, codigos de respuesta y reglas de negocio. **La proxima sesion arranca implementando, no decidiendo.**
+Lo siguiente, a eleccion de la persona a cargo:
 
-- `GET /api/usuarios`, `GET /:id`, `POST`, `PUT /:id`, `PATCH /:id/estado`
-- **No hay `DELETE`.** RF-03 pide desactivar, no borrar. Los usuarios tienen datos asociados.
-- Aqui se prueba por fin el caso **403 por rol insuficiente**, que quedo pendiente en T-06: es la primera ruta con `validarRol('admin')` de verdad.
-- Documentar las rutas nuevas con anotaciones OpenAPI (§4c), si no el swagger se queda a medias.
+1. **Mapeo de solo lectura del modulo documental** (no requiere VPS ni MinIO): leer `Fundacion_Nuestra_Esperanza_create.sql` completo, detectar y registrar en `design.md` las discrepancias — sobre todo `almuerzo_registro` / `salida_entrada_registro` en la base contra `almuerzo_datos` / `salida_entrada_datos` en `AGENTS.md` (regla 3 de `AGENTS.md`: reflejarlo antes de crear los modelos).
+2. **Fase 3 del frontend** (F-01 a F-03): requiere crear primero el repositorio del frontend y su `AGENTS.md`.
 
-*Hecho cuando:* un admin puede crear un archivista, y un archivista o visitante recibe 403 en todas esas rutas.
+Ver `tasks.md` para el detalle de cada tarea.
 
 ### Despues, en orden
 
-- **T-06 — Jest + Supertest**, cuando la persona a cargo lo pida. Requiere `jest` y `supertest` (no instalados). El proyecto es ESM, asi que Jest necesita `--experimental-vm-modules`. Antes de la primera suite, correr `npm run db:probar` y confirmar en el aviso la base.
+- **T-06 y T-09 — Jest + Supertest**, **pospuestas hasta despues de terminar todo el proyecto.** No son prioridad ahora (decision de la persona a cargo). Requieren `jest` y `supertest` (no instalados). El proyecto es ESM, asi que Jest necesita `--experimental-vm-modules`. Antes de la primera suite, correr `npm run db:probar` y confirmar en el aviso la base.
 
 ## Como arrancar la proxima sesion
 
 Prompt sugerido para opencode:
 
-> Implementa T-08 de tasks.md siguiendo `design.md` §4b y `AGENTS.md`. El diseño ya está decidido, no lo cambies sin preguntar. Documenta las rutas nuevas con anotaciones OpenAPI.
+> Arranca la sesion siguiente segun `CONTEXT.md` (seccion "Lo que hace el agente en la proxima sesion"). Si es el mapeo documental, es solo lectura: lee `Fundacion_Nuestra_Esperanza_create.sql` y registra las discrepancias en `design.md` antes de crear modelos.
 
 ## Como usar la documentacion y Postman
 
@@ -134,8 +147,9 @@ Alternativa sin tunel: `docker compose exec` en el VPS, donde `ocr_postgres` si 
 - **La region de Neon no se cambia.** Solo sostiene dev y pruebas; produccion esta en el VPS.
 - **Sin contrasenas en el repositorio, ni en el spec.** El ejemplo de login usa `{{PASSWORD}}`, que en Postman es una variable de entorno. `design.md` §4 lo exige y se respeta.
 - **`validarJWT` devuelve 403 (no 401) si el usuario fue desactivado** despues de emitir el token. Confirmado por la persona a cargo. Coherente con el 403 de "usuario desactivado" del login. Reflejado en `design.md` §4.
-- **T-06 (Jest) diferida por decision de la persona a cargo**, porque el alcance del trabajo dirigido de esta parte pide la documentacion de la API, no la suite de pruebas. No es una omision: queda anotado en `tasks.md` con el motivo.
+- **T-06 y T-09 (Jest + Supertest) pospuestas hasta despues de terminar todo el proyecto**, por decision de la persona a cargo. No son prioridad ahora: la suite se escribe cuando el sistema este completo. Queda anotado en `tasks.md`.
 - **T-08 sin `DELETE`:** desactivar es la unica salida. RF-03 pide desactivar, y los usuarios tienen datos asociados (documentos, validaciones OCR) que son datos de salud de menores. Escrito en `design.md` §4b.
+- **`GET /api/usuarios` con filtros y paginacion** (`?rol=`, `?activo=`, `?buscar=`, `?pagina=`, `?limite=`). La persona a cargo pidio filtros; el diseno se amplio en `design.md` §4b antes de implementar (regla de `AGENTS.md`). `?buscar=` usa `ILIKE` en nombre, apellido y email.
 - **`swagger-jsdoc` se verifica pidiendo el spec y contando los paths**, no confiando en que "no tira error": si el glob no encuentra los archivos devuelve un spec vacio en silencio.
 
 ## Discrepancias abiertas (no tocar sin confirmación)
@@ -177,12 +191,12 @@ Mientras no recibimos los datos para levantar el túnel SSH, no podemos conectar
 2. **Disenar el servicio S3/MinIO** — Esbozar `services/s3.js` y llenar `config/aws.js` (hoy vacio): cliente S3-compatible con `forcePathStyle` hacia `minio.fundacion.cloud:443` con SSL. Se puede escribir sin tener acceso al bucket; probarlo, no.
 3. **No hacer end-to-end documental** hasta tener tunel SSH activo y acceso verificado a MinIO. Mantener la separacion clara entre la base de desarrollo (VPS via tunel) y la de pruebas (Neon).
 
-La Fase 1 de autenticacion (T-03 a T-05 y T-07) ya no esta en esta lista: esta terminada.
+La Fase 1 de autenticacion (T-03 a T-05 y T-07) y T-08 (gestion de usuarios) ya no estan en esta lista: estan terminadas.
 
 ## Notas
 
 - `.env` esta en `.gitignore`, no se versiona. Los cambios del working tree siguen sin commitear.
-- Instaladas: express, cors, dotenv, pg, sequelize, nodemon, bcryptjs, jsonwebtoken, express-validator, swagger-jsdoc, swagger-ui-express. **Faltan:** jest y supertest (para T-06, diferida).
+- Instaladas: express, cors, dotenv, pg, sequelize, nodemon, bcryptjs, jsonwebtoken, express-validator, swagger-jsdoc, swagger-ui-express. **Faltan:** jest y supertest (para T-06/T-09, pospuestas hasta el final del proyecto).
 - `validar-jwt.js` ya esta implementado y devuelve **403** cuando el usuario del token fue desactivado (no 401). Decision confirmada por la persona a cargo. Coherente con el 403 de "usuario desactivado" del login.
 - Todo middleware que lea `req.usuario` responde 401 si no existe (`design.md` §4).
 - El middleware de roles es `validarRol`, no `validarPermiso`.
@@ -194,3 +208,11 @@ La Fase 1 de autenticacion (T-03 a T-05 y T-07) ya no esta en esta lista: esta t
 ## Cierre de sesion (2026-10-05)
 
 Se completo la Fase 1 de autenticacion. **No se hizo commit:** todo esta en el working tree, para que la persona a cargo lo revise antes de versionarlo. Los archivos nuevos son `config/swagger.js`, `controllers/auth.js`, `models/Usuario.js`, `routes/auth.js`, `scripts/crear-admin.js` y `utils/token.js`.
+
+## Cierre de sesion (T-08)
+
+Se completo la Fase 2 (gestion de usuarios): **T-08 implementada y verificada end-to-end contra Neon.** Archivos nuevos de esta sesion: `controllers/usuarios.js`, `routes/usuarios.js`, `utils/usuario-publico.js`. Modificados: `app.js` (monta `/api/usuarios`), `config/swagger.js` (tag `Usuarios` + 4 esquemas), `design.md` §4b (filtros y paginacion), `tasks.md` (T-08 hecha; T-06 y T-09 pospuestas).
+
+- **No se hizo commit.** Todo queda en el working tree para revision.
+- **Pendiente inmediato de la persona a cargo:** borrar el archivista de prueba `prueba.t08@fundacion.org` con SQL.
+- **Jest/Supertest (T-06, T-09) pospuestas hasta terminar todo el proyecto**, a pedido de la persona a cargo.

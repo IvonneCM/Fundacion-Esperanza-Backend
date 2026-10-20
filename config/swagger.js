@@ -25,6 +25,10 @@ const definicion = {
     {
       name: 'Auth',
       description: 'Autenticacion y sesion del usuario'
+    },
+    {
+      name: 'Usuarios',
+      description: 'Gestion de usuarios. Solo administradores.'
     }
   ],
   components: {
@@ -58,6 +62,98 @@ const definicion = {
           rol: {
             type: 'string',
             enum: ['admin', 'archivista', 'visitante']
+          }
+        }
+      },
+      UsuarioAdmin: {
+        type: 'object',
+        description: 'Usuario tal como lo devuelve la gestion de usuarios. Nunca incluye el hash.',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          nombre: {
+            type: 'string'
+          },
+          apellido: {
+            type: 'string'
+          },
+          email: {
+            type: 'string',
+            format: 'email'
+          },
+          rol: {
+            type: 'string',
+            enum: ['admin', 'archivista', 'visitante']
+          },
+          activo: {
+            type: 'boolean'
+          },
+          creado_en: {
+            type: 'string',
+            format: 'date-time'
+          }
+        }
+      },
+      UsuarioCrear: {
+        type: 'object',
+        required: ['nombre', 'apellido', 'email', 'password'],
+        properties: {
+          nombre: {
+            type: 'string',
+            maxLength: 100
+          },
+          apellido: {
+            type: 'string',
+            maxLength: 100
+          },
+          email: {
+            type: 'string',
+            format: 'email'
+          },
+          password: {
+            type: 'string',
+            format: 'password',
+            minLength: 8,
+            description: 'Minimo 8 caracteres. Se guarda con bcrypt y nunca se devuelve.'
+          },
+          rol: {
+            type: 'string',
+            enum: ['admin', 'archivista', 'visitante'],
+            default: 'visitante'
+          }
+        }
+      },
+      UsuarioEditar: {
+        type: 'object',
+        description: 'Todos los campos son opcionales. No admite password.',
+        properties: {
+          nombre: {
+            type: 'string',
+            maxLength: 100
+          },
+          apellido: {
+            type: 'string',
+            maxLength: 100
+          },
+          email: {
+            type: 'string',
+            format: 'email'
+          },
+          rol: {
+            type: 'string',
+            enum: ['admin', 'archivista', 'visitante']
+          }
+        }
+      },
+      UsuarioEstado: {
+        type: 'object',
+        required: ['activo'],
+        properties: {
+          activo: {
+            type: 'boolean',
+            example: false
           }
         }
       },

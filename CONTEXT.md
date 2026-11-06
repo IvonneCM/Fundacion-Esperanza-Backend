@@ -2,14 +2,16 @@
 
 ## Estado
 
-**Fase 1 de autenticacion COMPLETA: T-01 a T-05 y T-07 hechos y verificados end-to-end contra Neon.** El admin existe en la base y el login devuelve token. **T-08 (CRUD de usuarios, solo admin) implementada.** Jest/Supertest (T-06 y T-09) quedan **pospuestos hasta despues de terminar todo el proyecto**, por decision de la persona a cargo: no son prioridad ahora.
+**Fase 1 de autenticacion COMPLETA: T-01 a T-05 y T-07 hechos y verificados end-to-end contra Neon.** El admin existio y el login devolvio token. **T-08 (CRUD de usuarios, solo admin) implementada.** Jest/Supertest (T-06 y T-09) quedan **pospuestos hasta despues de terminar todo el proyecto**, por decision de la persona a cargo: no son prioridad ahora.
+
+**2026-11-06: la base de Neon fue recreada con el esquema candidato `Fundacion_Nuestra_Esperanza.sql` (20 tablas).** Al recrearla se perdieron los usuarios. Verificado con `npm run db:probar`: 20 tablas, `usuarios` con 0 filas y `tipos_documentos` con 0 filas. **Falta sembrar los 5 tipos de documento y recrear el admin.**
 
 ## Base de datos de desarrollo y pruebas
 
 Una sola base, descartable, en Neon. La persona a cargo decidio no crear `fundacion_test`.
 
 - Host `ep-square-moon-b5xcy9hw-pooler.c-7.us-east-2.aws.neon.tech`, base `neondb`, usuario `neondb_owner`, PostgreSQL 18.6, SSL activo.
-- Las 14 tablas del borrador SQL existen. `usuarios` coincide con `design.md` §3 y **tiene 2 filas**: el admin `anita@fundacion.org` (id `29fbbb9c-6d97-46f4-a693-b2627db845fa`, rol `admin`) y un **archivista de prueba** `prueba.t08@fundacion.org` (id `4559ccd4-d16b-4e93-bbdf-19464cdc6c5e`, rol `archivista`, activo) creado para verificar el 403 de T-08. **Hay que borrar el de prueba con SQL** (ver "Siguiente acción concreta"). Las otras 13 tablas siguen en 0 filas.
+- Las **20 tablas** del esquema candidato `Fundacion_Nuestra_Esperanza.sql` existen. Al 2026-11-06: `usuarios` **0 filas** (falta recrear el admin) y `tipos_documentos` **0 filas** (falta el seed de los 5 tipos). Las demás tablas están en 0 filas. `usuarios` coincide con `design.md` §3 (incluida `ci` nullable y `usuarios_ci_unique`).
 - `DB_PERMITIR_TEST=true` en el `.env`. Verificado que el flag esta bien cableado: en `false` el guard bloquea, en `true` deja pasar.
 - `npm run db:probar` lista los objetos del schema `public` y el detalle de `usuarios` (columnas y restricciones). Solo hace `SELECT`.
 - **La region `us-east-2` (Ohio) se queda asi.** Produccion vive en el VPS, no en Neon; los saltos de latencia no afectan a nadie. Decision cerrada, no volver a abrirla.
@@ -64,37 +66,32 @@ Una sola base, descartable, en Neon. La persona a cargo decidio no crear `fundac
 - **Filtros y paginacion de `GET /api/usuarios`** (reflejados en `design.md` §4b): `?rol=`, `?activo=`, `?buscar=` (ILIKE en nombre/apellido/email), `?pagina=` (default 1) y `?limite=` (default 20, maximo 100). Orden fijo `creado_en DESC`. `total` es el conteo antes de paginar.
 - **Verificado end-to-end contra Neon:** crear archivista 201, email duplicado 409, falta de password 400, auto-degradacion del admin 400, auto-desactivacion del admin 400, archivista recibe **403** en las 5 rutas, editar 200, email a uno usado 409, desactivar/reactivar 200, id inexistente 404. La lista no expone `password_hash`.
 
+### T-11 (servicio S3/MinIO)
+
+- `config/aws.js`: lee `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT`, `S3_FORCE_PATH_STYLE` y `S3_USE_SSL`. Con `S3_ENDPOINT` vacío usa AWS real; con endpoint y `S3_FORCE_PATH_STYLE=true` sirve para MinIO en el VPS. Falla ruidosamente si falta región o bucket.
+- `services/s3.js`: `subirArchivo`, `obtenerUrlFirmada` (1 hora), `existeArchivo` y `eliminarArchivo`. Los controladores no tocan el SDK.
+- **Verificado contra AWS S3 real (`us-east-2`):** `HeadBucket` devolvió 200. Las credenciales están solo en el `.env`.
+- **Decisión de precios:** USD canónico (`precio_referencia_usd`, `precio_unitario_usd`, `presupuesto_usd`) y tipo de cambio guardado por operación (`ingreso_almacen.tipo_cambio_bs_usd`, `planificaciones_menu.tipo_cambio_bs_usd`). Se agregaron `precio_unitario_bs`, `moneda_compra` y `monto_total_bs` para conservar el importe real en bolivianos. Sin tabla `tipos_cambio`, sin `fuente_tipo_cambio` y sin `capturado_en`: la fecha de la operación alcanza.
+- **Precio por día:** no se guarda un precio histórico aparte. Cada compra crea su `detalle_ingreso_almacen` y su `inventario_almacen_lote` con el precio USD de ese día; la historia se reconstruye desde las operaciones.
+
 ## Siguiente acción concreta
 
 ### Lo que tiene que hacer la persona a cargo
 
-1. **Borrar el usuario de prueba de T-08 (SQL).** Quedo creado para verificar el 403 por rol:
-   ```sql
-   DELETE FROM usuarios WHERE email = 'prueba.t08@fundacion.org';
-   ```
-   Se borra a mano porque la API no tiene `DELETE` por diseño (`design.md` §4b).
-2. **Corregir el apellido del admin (SQL).**
-   Al crear el admin, `ADMIN_APELLIDO` traia un apostrofo sobrante y quedo guardado como `"Perez"'` (con comilla y apostrofo). El codigo esta bien; el dato esta mal.
-   ```sql
-   UPDATE usuarios SET apellido = 'Perez' WHERE email = 'anita@fundacion.org';
-   ```
-3. **Cambiar la contraseña del admin antes de produccion.** Se compartio en texto plano por chat (`anita0709`). En Neon da igual porque la base es descartable, pero si esa misma contrasena llega al VPS hay que rotarla.
-4. **Decidir si se protege `/api-docs` o se retira antes de produccion.** Hoy es publico.
-5. **Enviar los datos del VPS** si se quiere desbloquear el modulo documental: IP, usuario SSH, metodo de auth, y si Postgres tiene `ports:` en el compose. Ver seccion "Bloqueo actual" mas abajo.
+1. **Rotar la contraseña del admin al finalizar el proyecto.** Se compartio en texto plano por chat (`anita0709`). En Neon da igual porque la base es descartable, pero antes de produccion hay que cambiarla. **Pospuesto por decision de la persona a cargo: se hace al cerrar el trabajo del proyecto, no ahora.**
+2. **Datos del VPS: no disponibles por ahora.** Decision: no bloquear el modulo documental por eso. Se trabaja con **S3 + MinIO temporal** y la base **Neon** hasta llegar a produccion; el tunel SSH y la base del VPS quedan para el final.
+3. **`/api-docs` se protege** (decision tomada) y la documentacion generada no debe quedar publicada en GitHub. Se implementa cuando se toque ese frente; anotado en "Pendientes de seguridad".
+4. **Esquema confirmado y base recreada (2026-11-06).** `Fundacion_Nuestra_Esperanza.sql` (20 tablas) es la fuente de verdad; `_create.sql` quedó obsoleto. **Falta que la persona a cargo siembre `tipos_documentos` con los 5 tipos y recree el admin con `npm run admin:crear`.** El agente no ejecuta `CREATE`/`DROP`/`INSERT`: solo verifica con `npm run db:probar` (lectura).
 
 ### Lo que hace el agente en la proxima sesion
 
-**T-08 quedo terminada.** La Fase 2 (gestion de usuarios) esta cerrada salvo T-09, que esta pospuesta.
-
-Lo siguiente, a eleccion de la persona a cargo:
-
-1. **Mapeo de solo lectura del modulo documental** (no requiere VPS ni MinIO): leer `Fundacion_Nuestra_Esperanza_create.sql` completo, detectar y registrar en `design.md` las discrepancias — sobre todo `almuerzo_registro` / `salida_entrada_registro` en la base contra `almuerzo_datos` / `salida_entrada_datos` en `AGENTS.md` (regla 3 de `AGENTS.md`: reflejarlo antes de crear los modelos).
-2. **Fase 3 del frontend** (F-01 a F-03): requiere crear primero el repositorio del frontend y su `AGENTS.md`.
+**Esquema documental confirmado (2026-11-06).** `design.md` §8 ya describe las 20 tablas reales, y `config/aws.js` + `services/s3.js` están implementados y verificados (T-11). El siguiente paso es crear los **modelos Sequelize documentales** (`TipoDocumento`, `Documento` y las 6 extensiones) y luego los endpoints de carga/validación (RF-04/RF-05), respetando los puntos abiertos de `design.md` §8.9.
 
 Ver `tasks.md` para el detalle de cada tarea.
 
 ### Despues, en orden
 
+- **Modulo documental:** modelos Sequelize de las tablas documentales, servicio S3/MinIO, carga de archivos, Textract, validacion y busqueda. Se detalla en `tasks.md` a medida que se cierre cada diseno.
 - **T-06 y T-09 — Jest + Supertest**, **pospuestas hasta despues de terminar todo el proyecto.** No son prioridad ahora (decision de la persona a cargo). Requieren `jest` y `supertest` (no instalados). El proyecto es ESM, asi que Jest necesita `--experimental-vm-modules`. Antes de la primera suite, correr `npm run db:probar` y confirmar en el aviso la base.
 
 ## Como arrancar la proxima sesion
@@ -151,45 +148,57 @@ Alternativa sin tunel: `docker compose exec` en el VPS, donde `ocr_postgres` si 
 - **T-08 sin `DELETE`:** desactivar es la unica salida. RF-03 pide desactivar, y los usuarios tienen datos asociados (documentos, validaciones OCR) que son datos de salud de menores. Escrito en `design.md` §4b.
 - **`GET /api/usuarios` con filtros y paginacion** (`?rol=`, `?activo=`, `?buscar=`, `?pagina=`, `?limite=`). La persona a cargo pidio filtros; el diseno se amplio en `design.md` §4b antes de implementar (regla de `AGENTS.md`). `?buscar=` usa `ILIKE` en nombre, apellido y email.
 - **`swagger-jsdoc` se verifica pidiendo el spec y contando los paths**, no confiando en que "no tira error": si el glob no encuentra los archivos devuelve un spec vacio en silencio.
+- **El usuario de prueba de T-08 ya fue borrado.** No queda SQL pendiente por ese lado; `usuarios` tiene solo el admin.
+- **El apellido del admin (`"Perez"'`) no se corrige:** la persona a cargo decidio que no es necesario y no es un problema.
+- **La rotacion de la contrasena del admin se hace al finalizar el trabajo del proyecto**, no ahora.
+- **`/api-docs` se protege y no se publica en GitHub.** La documentacion generada no debe quedar expuesta publicamente. Implementacion pendiente.
+- **Sin datos del VPS, se avanza con S3 + MinIO temporal y Neon.** No se espera al tunel SSH para el modulo documental; la base y MinIO del VPS se conectan recien en produccion.
+- **El frontend ya existe y esta probado:** repositorio `Fundacion-Esperanza-Fronend` (sic), con F-01 a F-03 resueltas. No se crea un repositorio nuevo desde el backend.
 
 ## Discrepancias abiertas (no tocar sin confirmación)
 
 1. ~~`AGENTS.md` linea 64 vs `design.md` §2~~ — **resuelta**, `AGENTS.md` ya dice `admin` / `archivista` / `visitante`.
-2. `AGENTS.md` nombra `almuerzo_datos` y `salida_entrada_datos`; la base tiene `almuerzo_registro` y `salida_entrada_registro`. **La base real le da la razon al SQL, no a `AGENTS.md`.** Por regla 3 de `AGENTS.md` hay que reflejarlo en `design.md` antes de crear los modelos.
-3. `config/aws.js` esta vacio y las variables `MINIO_*` del `.env` no las lee ningun modulo.
-4. La base tiene 14 tablas del borrador, pero `design.md` solo define `usuarios`. Las otras 13 no tienen respaldo en el diseno.
+2. ~~`AGENTS.md` nombra `almuerzo_datos` / `salida_entrada_datos` y la base tiene `almuerzo_registro` / `salida_entrada_registro`~~ — **resuelta:** manda el SQL. `design.md` §8 lo documenta y `AGENTS.md` ya usa los nombres reales.
+3. ~~`config/aws.js` esta vacio y las variables `MINIO_*` del `.env` no las lee ningun modulo~~ — **resuelta:** T-11 implementado y verificado contra AWS S3 (`us-east-2`). MinIO del VPS se conecta cambiando `S3_ENDPOINT` y `S3_FORCE_PATH_STYLE`.
+4. **Parcial:** la base tiene 20 tablas y `design.md` §8.9 documenta el candidato, pero §8 sigue describiendo el borrador de 14. Falta reemplazar §8 cuando se apruebe el esquema.
+5. ~~`documentos.usuario_validacion_id` es `NOT NULL`~~ — **resuelta en el candidato y en la base:** ya es nullable, asi que se puede crear el documento pendiente de validacion.
+6. ~~`entrada_inventario` / `salida_inventario` con `CHECK` sobre `tipo`~~ — **resuelta en el candidato:** las tablas son `ingreso_almacen` / `salida_almacen` y los CHECK ya no apuntan a una columna inexistente. Verificado en la base real.
+7. **`documentos.codigo` es `NOT NULL` pero no `UNIQUE`**, y RF-04 permite editar el codigo. Falta decidir si debe ser unico por tipo/fecha.
+8. **`texto_ocr_tsv` (tsvector) tiene indice GIN pero nada lo llena:** no hay trigger en el SQL. La busqueda de texto completo (RF-09) necesita decidir si se actualiza desde el servicio o con trigger.
+9. **`Fundacion_Nuestra_Esperanza.sql` (2026-11-06) es la version candidata mas reciente** y ya fue corregida: CHECK invalidos, IDs sin default, `receta_insumos` apuntando a producto, un solo `tipos_documentos_id`, `usuario_validacion_id` nullable, cantidades solo en el detalle, tipos numericos de precio/tipo de cambio, `ci` nullable, `tipo_proveedor` eliminado y campos de bolivianos agregados. **La base de Neon ya fue recreada con este archivo.** Falta la confirmacion formal para reemplazar a `_create.sql` y actualizar `AGENTS.md` y `design.md` §8. El archivo está en `.gitignore`, como el anterior.
 
 ## Pendientes de seguridad
 
 Recopilados. Los tres primeros son de esta sesion o anteriores; el ultimo viene de antes.
 
-- **`/api-docs` y `/api/docs/swagger.json` estan abiertos, sin autenticacion.** Aceptable en desarrollo. Antes de produccion hay que protegerlos o quitarlos. **No resuelto: sigue abierto.**
-- **La contrasena del admin de pruebas (`anita0709`) se compartio en texto plano por chat.** Cambiarla antes de produccion, aunque la base sea descartable.
+- **`/api-docs` y `/api/docs/swagger.json` estan abiertos, sin autenticacion.** **Decision tomada: se protegen** (y la documentacion generada no se publica en GitHub). Implementacion pendiente; sigue abierto hasta entonces.
+- **La contrasena del admin de pruebas (`anita0709`) se compartio en texto plano por chat.** **Se rota al finalizar el trabajo del proyecto**, no ahora (decision de la persona a cargo).
 - **`npm audit` reporta 5 vulnerabilidades**, todas transitivas y de desarrollo: `nodemon` -> `chokidar` -> `braces` (alta), `sequelize` -> `uuid` (moderada). Ninguna es codigo de produccion expuesto. Revisar antes de produccion.
 - **`MINIO_ROOT_PASSWORD`** sigue en el `.env` aunque ningun modulo lo lea. Viene de un entorno Docker compartido.
 - **VPS (produccion):** `DB_PERMITIR_TEST` debe valer `false` y `NODE_ENV` debe quedar en `production` en el `.env` del servidor. Ninguno de los dos esta automatizado.
 
-## Bloqueo actual: Acceso a VPS (BD real + MinIO) — pendiente de datos SSH
+## Acceso a VPS — pospuesto (no bloquea el documental)
 
-Mientras no recibimos los datos para levantar el túnel SSH, no podemos conectarnos directamente a la BD del VPS ni hacer pruebas end-to-end con archivos de MinIO.
+**Decision:** no hay datos del VPS por ahora y no se espera a tenerlos. El modulo documental avanza con **S3 + MinIO temporal** y la base **Neon** hasta produccion. El tunel SSH y la base del VPS quedan para el final.
 
-### Estado del bloqueo
+### Estado
 
-- **Error desde laptop:** `getaddrinfo ENOTFOUND ocr_postgres` (el hostname solo existe en la red Docker del VPS).
-- **Vía correcta:** Túnel SSH `ssh -L 5432:ocr_postgres:5432 USUARIO_SSH@IP_DEL_VPS` (Opción A) o `ssh -L 5432:localhost:5432 ...` (Opción B). Con el túnel activo, usar `DB_HOST=localhost` y **comentar `DATABASE_URL`** en `.env`.
-- **Datos pendientes (pedidos):** IP pública del VPS, Usuario SSH, Método de auth SSH (clave/contraseña). También confirmar si Postgres tiene `ports:` (para elegir A/B).
-- **MinIO (documental):** `https://minio.fundacion.cloud`, bucket `documentos-nuestra-esperanza`, usuario `minio_admin`. Necesario para subir/leer archivos (tests/documental end-to-end). No bloquea Fase 1 (auth).
+- **Error desde laptop si se usa la config del VPS:** `getaddrinfo ENOTFOUND ocr_postgres` (el hostname solo existe en la red Docker del VPS).
+- **Via futura:** tunel SSH `ssh -L 5432:ocr_postgres:5432 USUARIO_SSH@IP_DEL_VPS` (Opcion A) o `ssh -L 5432:localhost:5432 ...` (Opcion B). Con el tunel activo, `DB_HOST=localhost` y **comentar `DATABASE_URL`**. No ejecutar ahora.
+- **Datos que siguen faltando (no urgentes):** IP publica del VPS, usuario SSH, metodo de auth SSH, y si Postgres tiene `ports:` (para elegir A/B).
+- **MinIO temporal:** se usara `https://minio.fundacion.cloud`, bucket `documentos-nuestra-esperanza`, usuario `minio_admin` como entorno de trabajo hasta produccion.
 
 ### Nota sobre ambientes
 
-- **Desarrollo/documental (datos reales):** usar túnel SSH + BD del VPS (con `DATABASE_URL` comentado).
-- **Pruebas automáticas (Jest):** usar Neon con `NODE_ENV=test` y `DB_PERMITIR_TEST=true` (mantener `DATABASE_URL` activo). Así no tocamos BD real.
+- **Desarrollo/documental:** S3 + MinIO temporal y Neon (`DATABASE_URL` activo). No se requiere tunel SSH.
+- **Pruebas automaticas (Jest):** Neon con `NODE_ENV=test` y `DB_PERMITIR_TEST=true`.
+- **Produccion:** base y MinIO del VPS; rotar credenciales y `DB_PERMITIR_TEST=false` (ver "Pendientes de seguridad").
 
 ### Que queda pendiente del modulo documental
 
-1. **[Solo lectura] Mapear esquema documental** — Leer `Fundacion_Nuestra_Esperanza_create.sql` completo. Detectar discrepancias con `AGENTS.md`/`design.md` (especialmente los nombres de las tablas de extension: `almuerzo_registro` y `salida_entrada_registro` en la base, contra `almuerzo_datos` y `salida_entrada_datos` en `AGENTS.md`). **Registrar la discrepancia en `design.md` antes de crear los modelos** (regla 3 de `AGENTS.md`). Esto no requiere VPS ni MinIO: es solo leer.
-2. **Disenar el servicio S3/MinIO** — Esbozar `services/s3.js` y llenar `config/aws.js` (hoy vacio): cliente S3-compatible con `forcePathStyle` hacia `minio.fundacion.cloud:443` con SSL. Se puede escribir sin tener acceso al bucket; probarlo, no.
-3. **No hacer end-to-end documental** hasta tener tunel SSH activo y acceso verificado a MinIO. Mantener la separacion clara entre la base de desarrollo (VPS via tunel) y la de pruebas (Neon).
+1. ~~**[Solo lectura] Mapear esquema documental**~~ — **hecho:** `design.md` §8.
+2. **Disenar y proponer el servicio S3/MinIO** (`config/aws.js` + `services/s3.js`): cliente S3-compatible con `forcePathStyle` y SSL hacia MinIO temporal. **Esperar confirmacion antes de escribir codigo.**
+3. **Modelos Sequelize documentales** y endpoints de carga/OCR/validacion/busqueda, despues de cerrar los puntos abiertos de `design.md` §8 (sobre todo `usuario_validacion_id`).
 
 La Fase 1 de autenticacion (T-03 a T-05 y T-07) y T-08 (gestion de usuarios) ya no estan en esta lista: estan terminadas.
 
@@ -214,5 +223,12 @@ Se completo la Fase 1 de autenticacion. **No se hizo commit:** todo esta en el w
 Se completo la Fase 2 (gestion de usuarios): **T-08 implementada y verificada end-to-end contra Neon.** Archivos nuevos de esta sesion: `controllers/usuarios.js`, `routes/usuarios.js`, `utils/usuario-publico.js`. Modificados: `app.js` (monta `/api/usuarios`), `config/swagger.js` (tag `Usuarios` + 4 esquemas), `design.md` §4b (filtros y paginacion), `tasks.md` (T-08 hecha; T-06 y T-09 pospuestas).
 
 - **No se hizo commit.** Todo queda en el working tree para revision.
-- **Pendiente inmediato de la persona a cargo:** borrar el archivista de prueba `prueba.t08@fundacion.org` con SQL.
+- **Archivista de prueba `prueba.t08@fundacion.org`: ya borrado** con SQL por la persona a cargo.
 - **Jest/Supertest (T-06, T-09) pospuestas hasta terminar todo el proyecto**, a pedido de la persona a cargo.
+
+## Cierre de sesion (mapeo documental)
+
+Se actualizaron las decisiones de la persona a cargo y se completo el mapeo de solo lectura del esquema documental (`design.md` §8). No se creo codigo ni se toco la base. Archivos modificados: `CONTEXT.md`, `tasks.md`, `design.md`, `AGENTS.md` (nombres reales de tablas).
+
+- **Pendiente inmediato:** proponer `config/aws.js` + `services/s3.js` y esperar confirmacion antes de escribir codigo.
+- **Decisiones registradas:** usuario de prueba borrado, apellido del admin no se corrige, rotacion de contrasena al final, `/api-docs` se protege, MinIO temporal + Neon hasta produccion, frontend ya probado en `Fundacion-Esperanza-Fronend`.

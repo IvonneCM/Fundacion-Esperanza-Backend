@@ -1,6 +1,6 @@
 # design.md — Backend (Node.js / Express)
 
-Cómo se construye lo definido en `requirements.md`. Este documento crece por módulo: **por ahora cubre solo autenticación, roles/usuarios y la estrategia de pruebas.** El modelo de datos de documentos y alimentación se agrega cuando lleguemos a esos módulos (ver `Fundacion_Nuestra_Esperanza_create.sql` como borrador).
+Cómo se construye lo definido en `requirements.md`. Este documento crece por módulo: cubre autenticación, roles/usuarios, la estrategia de pruebas y, desde esta sesión, **el mapeo del esquema documental (§8)**. El módulo alimentario se mapea en §8.8 pero se implementa más adelante.
 
 Lo marcado como **(propuesto)** no fue discutido todavía: se puede cambiar antes de implementarlo.
 
@@ -12,7 +12,7 @@ Lo marcado como **(propuesto)** no fue discutido todavía: se puede cambiar ante
 - NFR-03 Seguridad
 - NFR-04 Documentacion de la API
 
-Estado de avance: la Fase 1 (T-01 a T-05 y T-07) esta implementada y verificada. Las pruebas automatizadas (T-06) quedaron diferidas; T-08 es lo que sigue. Ver `CONTEXT.md`.
+Estado de avance: la Fase 1 (T-01 a T-05 y T-07) y la Fase 2 (T-08) estan implementadas y verificadas. Las pruebas automatizadas (T-06 y T-09) quedaron diferidas hasta terminar el proyecto. El módulo documental inicia con el mapeo de esquema de §8. Ver `CONTEXT.md`.
 
 ## 2. Roles y permisos
 
@@ -175,3 +175,92 @@ No se implementa hasta que el login del backend esté probado y exista el `AGENT
 - El usuario puede cambiar su propia contraseña con recuperación por correo
 - Bloqueo por intentos fallidos de login: fuera de alcance por ahora.
 - Mecanismo de correo para la recuperación de contraseña: sin definir, y bloquea el punto anterior.
+
+## 8. Módulo documental: esquema confirmado
+
+**Fuente:** `Fundacion_Nuestra_Esperanza.sql` (20 tablas, 2026-11-06). Es la única fuente de verdad del esquema, según `AGENTS.md`. La base Neon fue recreada con este archivo y verificada con `npm run db:probar` (20 tablas, sin constraints duplicados). **Todavía no se crearon modelos ni endpoints**: primero hay que cerrar los puntos abiertos de §8.9.
+
+El módulo documental toca 8 tablas: `documentos` (común), el catálogo `tipos_documentos` y 6 tablas de extensión. `ficha_social_datos` y `referencia_social_datos` son 1:1 con `documentos`; `almuerzo_registro`, `salida_entrada_registro` y `ticket_transporte_registro` son 1:N (varias filas por imagen); `ficha_social_grupo_familiar` es 1:N de `ficha_social_datos`.
+
+### 8.1 `tipos_documentos` (catálogo)
+
+| Columna | Tipo | Nulo | Default | Notas |
+|---|---|---|---|---|
+| `id` | uuid | no | `gen_random_uuid()` | PK |
+| `nombre_tipo` | varchar(50) | no | — | Nombre visible |
+| `codigo` | varchar(10) | no | — | `UNIQUE` (`tipos_documentos_codigo_unique`) |
+
+**Seed obligatorio:** `ficha_social`, `almuerzo`, `salida_entrada`, `referencia_social` y `ticket_transporte`. Sin estas filas no se puede insertar en `documentos` porque `tipos_documentos_id` es `NOT NULL`.
+
+### 8.2 `documentos` (común)
+
+| Columna | Tipo | Nulo | Default | Notas |
+|---|---|---|---|---|
+| `id` | uuid | no | `gen_random_uuid()` | PK |
+| `codigo` | varchar(30) | no | — | Sin `UNIQUE` (§8.9) |
+| `tipos_documentos_id` | uuid | no | — | FK → `tipos_documentos(id)` |
+| `ruta_archivo` | varchar(500) | no | — | Clave del archivo en S3/MinIO |
+| `texto_ocr` | text | sí | — | Texto crudo extraído |
+| `texto_ocr_tsv` | tsvector | sí | — | Índice GIN; nada lo llena todavía (§8.9) |
+| `estado_ocr` | varchar(20) | no | `'pendiente'` | CHECK: `pendiente`, `procesado`, `error` |
+| `estado_validacion` | varchar(20) | no | `'pendiente'` | CHECK: `pendiente`, `validado`, `rechazado` |
+| `usuario_registro_id` | uuid | no | — | FK → `usuarios(id)` |
+| `usuario_validacion_id` | uuid | sí | — | FK → `usuarios(id)`; se llena al validar |
+| `fecha_registro` | timestamptz | no | `now()` | |
+| `fecha_validacion` | timestamptz | sí | — | |
+
+Índices: `idx_documentos_fts` GIN sobre `texto_ocr_tsv` y `idx_documentos_tipo` sobre `tipos_documentos_id`.
+
+Flujo de estados: al cargar, `estado_ocr='pendiente'` y `estado_validacion='pendiente'`; cuando Textract termina, `estado_ocr='procesado'`; al validar, `estado_validacion='validado'` y se completa `usuario_validacion_id`. No hay estado "cargado" separado de "pendiente de OCR".
+
+### 8.3 `ficha_social_datos` (1:1 con `documentos`)
+
+`id` uuid PK · `documento_id` uuid FK → `documentos(id)` `ON DELETE CASCADE`, `UNIQUE` (`ficha_social_datos_documento_id_unique`) · `nombre_paciente` varchar(150) NOT NULL · `fecha_nacimiento` date · `edad_entrada` smallint · `grado_escolaridad` varchar(50) · `procedencia` varchar(100) · `domicilio_zona` varchar(150) · `calle` varchar(150) · `numero_casa` varchar(20) · `celular_padre` varchar(20) · `celular_madre` varchar(20) · `diagnostico` varchar(200) · `fecha_diagnostico` date · `medico_tratante` varchar(150) · `hospital` varchar(150) · `observaciones` text.
+
+### 8.4 `ficha_social_grupo_familiar` (1:N de `ficha_social_datos`)
+
+`id` uuid PK · `ficha_social_id` uuid FK → `ficha_social_datos(id)` `ON DELETE CASCADE` · `nombre_apellido` varchar(150) NOT NULL · `parentesco` varchar(50) · `edad` smallint · `estado_civil` varchar(30) · `grado_instruccion` varchar(80) · `ocupacion` varchar(100).
+
+### 8.5 `referencia_social_datos` (1:1 con `documentos`)
+
+`id` uuid PK · `documento_id` uuid FK → `documentos(id)` `ON DELETE CASCADE`, `UNIQUE` (`referencia_social_datos_documento_id_unique`) · `cite` varchar(50) · `fecha` date · `remitente_nombre` varchar(150) · `remitente_cargo` varchar(150) · `institucion_remitente` varchar(150) · `nombre_paciente` varchar(150) NOT NULL · `edad_paciente` varchar(20) · `expediente_clinico` varchar(50) · `diagnostico` varchar(200) · `procedencia` varchar(150) · `contenido` text.
+
+### 8.6 `almuerzo_registro` (1:N con `documentos`)
+
+`id` uuid PK · `documento_id` uuid FK → `documentos(id)` `ON DELETE CASCADE` · `fila_numero` smallint · `fecha_almuerzo` date · `apellido_paciente` varchar(100) · `nombres_paciente` varchar(150) NOT NULL · `nombre_cuidador` varchar(150) · `hospital` varchar(100) · `cantidad_almuerzos` smallint NOT NULL DEFAULT 1 · `estado_fila_validacion` varchar(20) NOT NULL DEFAULT `'pendiente'` (CHECK: `pendiente`, `validado`, `rechazado`).
+
+### 8.7 `salida_entrada_registro` (1:N con `documentos`)
+
+`id` uuid PK · `documento_id` uuid FK → `documentos(id)` `ON DELETE CASCADE` · `fila_numero` smallint · `nombre_nino` varchar(150) NOT NULL · `nombre_acompanante` varchar(150) · `ci_acompanante` varchar(20) · `celular_acompanante` varchar(20) · `fecha_ingreso` date · `fecha_salida` date · `estado_fila_validacion` varchar(20) NOT NULL DEFAULT `'pendiente'` (mismo CHECK).
+
+### 8.8 `ticket_transporte_registro` (1:N con `documentos`)
+
+`id` uuid PK · `documento_id` uuid FK → `documentos(id)` (en el SQL actual **sin `ON DELETE CASCADE`**, a diferencia de las otras extensiones; revisar si se agrega) · `fila_numero` smallint · `fecha_ticket` date · `nombre_solicitante` varchar(150) NOT NULL · `nro_ticket` varchar(100) · `ruta` varchar(150) · `tipo_viaje` varchar(12) NOT NULL DEFAULT `'ida'` (CHECK: `ida`, `vuelta`, `ida_vuelta`) · `estado_fila_validacion` varchar(20) NOT NULL DEFAULT `'pendiente'` (mismo CHECK).
+
+### 8.9 Puntos abiertos antes de crear los modelos
+
+1. **`documentos.codigo` no es `UNIQUE`.** RF-04 permite generar o editar el código. Falta definir si debe ser único (y si es por tipo, por fecha o global).
+2. **`texto_ocr_tsv` no se llena con ningún trigger.** Hay que decidir si lo actualiza el servicio al guardar `texto_ocr` (`to_tsvector`) o si se agrega un trigger en la base.
+3. **`ruta_archivo` es varchar(500), no una URL.** Falta definir el formato de clave en S3/MinIO (por ejemplo `documentos/{tipo}/{codigo}.{ext}`), coherente con RF-04.
+4. **Escritura transaccional:** crear `documentos` + su extensión (y filas de grupo familiar) debe ir en una transacción (NFR-01).
+5. **`ticket_transporte_registro.documento_id` no tiene `ON DELETE CASCADE`** en el SQL confirmado. Si se quiere el mismo borrado en cascada que las otras extensiones, hay que `ALTER TABLE` (lo aplica la persona a cargo).
+6. **Operativo:** la base quedó sin `tipos_documentos` y sin admin. Antes de probar la carga hay que sembrar los 5 tipos y recrear el admin; el agente no escribe en la base.
+
+### 8.10 Módulo alimentario (mapeado, fuera de alcance inmediato)
+
+Las 11 tablas restantes son `ingreso_almacen`, `detalle_ingreso_almacen`, `inventario_almacen_producto`, `inventario_almacen_lote`, `salida_almacen`, `detalle_salida_almacen`, `proveedor`, `recetas`, `receta_insumos`, `planificaciones_menu` y `detalle_planificacion`. Se documentan acá solo para cerrar el mapa de las 20 tablas; no se implementan en esta fase.
+
+Correcciones ya aplicadas en el esquema confirmado:
+
+- `ingreso_almacen`: `CHECK` sobre `tipo_ingreso` (`compra`/`donacion`/`devolucion`/`ajuste`), cantidad fuera de la cabecera, `observaciones` varchar(255).
+- `salida_almacen`: `CHECK` inválidos eliminados; la cantidad vive en `detalle_salida_almacen`.
+- IDs con `DEFAULT gen_random_uuid()`; `detalle_planificacion` usa `planificacion_id`.
+- `receta_insumos.insumo_id` apunta a `inventario_almacen_producto`.
+- Precios: USD canónico (`precio_referencia_usd`, `precio_unitario_usd`, `presupuesto_usd`) y `tipo_cambio_bs_usd` por operación (`ingreso_almacen`, `planificaciones_menu`). Se conserva el importe real en bolivianos con `precio_unitario_bs`, `moneda_compra` (`BOB`/`USD`) y `monto_total_bs`. Sin tabla `tipos_cambio`, sin `fuente_tipo_cambio` y sin `capturado_en`.
+- `usuarios.ci` nullable y único; `proveedor.telefono` varchar; `tipo_proveedor` eliminado.
+- Claves alternas renombradas: `ficha_social_datos_documento_id_unique`, `referencia_social_datos_documento_id_unique`, `inventario_almacen_producto_codigo_unique`, `tipos_documentos_codigo_unique`, `proveedor_ci_nit_unique`, `usuarios_email_unique` y `usuarios_ci_unique`.
+
+Puntos abiertos del alimentario:
+
+- `detalle_ingreso_almacen.fecha_expiracion` es `date`, mientras `inventario_almacen_lote.fecha_expiracion` es `timestamptz`: el mismo dato vive en dos lugares y puede desincronizarse.
+- El detalle referencia el lote (`inventario_almacen_lote_id`), así que el lote debe existir antes de insertar el detalle; definir el orden de escritura.

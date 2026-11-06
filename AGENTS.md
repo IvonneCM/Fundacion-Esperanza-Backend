@@ -28,8 +28,8 @@ Stack: Node.js/Express, PostgreSQL (Sequelize), AWS S3 + Textract, microservicio
 ## Cambios en la base de datos
 
 - **El agente nunca escribe en la base de datos.** Todo cambio de esquema, dato o migración lo aplica la persona a cargo, a mano, con el SQL.
-- `Fundacion_Nuestra_Esperanza_create.sql` es la **única fuente de verdad del esquema**. Si el agente necesita saber cómo es una tabla, la lee ahí. No mantener una segunda copia en un script: se desincroniza en silencio.
-- **No crear scripts que hagan `CREATE`, `ALTER`, `DROP`, `INSERT`, `UPDATE` ni `DELETE`** sobre la base. Se eliminó `scripts/inicializar-base.js` por este motivo: duplicaba el SQL, cubría solo 1 de las 14 tablas y abría una vía de escritura innecesaria sobre datos de salud de menores.
+- `Fundacion_Nuestra_Esperanza.sql` (20 tablas, versión confirmada 2026-11-06) es la **única fuente de verdad del esquema**. Si el agente necesita saber cómo es una tabla, la lee ahí. `Fundacion_Nuestra_Esperanza_create.sql` quedó obsoleto y no debe usarse. No mantener una segunda copia en un script: se desincroniza en silencio. Ambos archivos están en `.gitignore`.
+- **No crear scripts que hagan `CREATE`, `ALTER`, `DROP`, `INSERT`, `UPDATE` ni `DELETE`** sobre la base. Se eliminó `scripts/inicializar-base.js` por este motivo: duplicaba el SQL, cubría solo 1 de las 20 tablas y abría una vía de escritura innecesaria sobre datos de salud de menores.
 - `npm run db:probar` (`scripts/probar-conexion.js`) sí se puede usar: hace únicamente `SELECT`, nunca escribe.
 - Para hablar con una base remota que no expone su puerto, el agente propone el túnel SSH o el comando de Docker, pero no los ejecuta: los corre la persona a cargo.
 
@@ -66,7 +66,7 @@ Nota: no existe una carpeta `helpers/` separada — todo utilitario va en `utils
 ## Base de datos
 
 - **UUID** (`DataTypes.UUID`, `defaultValue: DataTypes.UUIDV4`) como llave primaria en todas las tablas — nunca autoincremental.
-- Documentos: tabla común `documentos` (campos compartidos: tipo, ruta de archivo, estado OCR, estado de validación, texto extraído) + una tabla de extensión 1:1 por tipo de documento (`ficha_social_datos`, `almuerzo_datos`, `salida_entrada_datos`, `referencia_social_datos`).
+- Documentos: catálogo `tipos_documentos` (`codigo` único) + tabla común `documentos` (campos compartidos: `tipos_documentos_id`, ruta de archivo, estado OCR, estado de validación, texto extraído) + tablas de extensión según el tipo: `ficha_social_datos` (1:1, con `ficha_social_grupo_familiar` 1:N), `referencia_social_datos` (1:1), `almuerzo_registro` (1:N), `salida_entrada_registro` (1:N) y `ticket_transporte_registro` (1:N). Los nombres reales mandan y están mapeados en `design.md` §8.
 - `timestamps: false` salvo que el modelo lo necesite explícitamente — confirmar caso por caso, no asumir.
 
 ## Integraciones externas

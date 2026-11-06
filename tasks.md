@@ -51,20 +51,32 @@ Para trabajar con opencode, un prompt tipo: *"Implementa la tarea T-0X de tasks.
   *No es prioridad:* igual que T-06, la suite se escribe cuando el proyecto completo este terminado.
   *Hecho cuando:* `npm test` sigue en verde con los casos de permisos y de validación.
 
-## Fase 3 — Frontend del login (después de la Fase 1)
+## Fase 3 — Frontend del login (después de la Fase 1) — COMPLETA
 
-Antes de empezar: crear el repositorio del frontend y su `AGENTS.md`.
+El frontend vive en un repositorio aparte, **`Fundacion-Esperanza-Fronend`** (sic), con su propio `AGENTS.md`. Ya esta probado, asi que no se recrea desde el backend.
 
-- [ ] **F-01 — Proyecto Vite + React y estructura base**
-- [ ] **F-02 — Pantalla de login y contexto de sesión** (guarda el token, llama a `/api/auth/perfil` al recargar).
-- [ ] **F-03 — Rutas protegidas según el rol y menú según el rol**
-  *Hecho cuando (F-01 a F-03):* un admin, un archivista y un visitante entran y ven solo lo que les corresponde, y sin sesión se redirige al login.
+- [x] **F-01 — Proyecto Vite + React y estructura base**
+- [x] **F-02 — Pantalla de login y contexto de sesión** (guarda el token, llama a `/api/auth/perfil` al recargar).
+- [x] **F-03 — Rutas protegidas según el rol y menú según el rol**
+  *Hecho cuando (F-01 a F-03):* un admin, un archivista y un visitante entran y ven solo lo que les corresponde, y sin sesión se redirige al login. **Verificado en el repositorio del frontend.**
 
 ## Cuando llegue el acceso al VPS
 
 - [ ] **V-01 — Levantar Postgres y MinIO en el VPS** con `docker-compose.yml`, usando el esquema SQL actualizado (no el borrador anterior).
 - [ ] **V-02 — Apuntar el backend a la base del VPS** mediante túnel SSH y verificar que el login funciona igual.
 
-## Pendiente de definir (siguientes módulos)
+## Fase 4 — Módulo documental (RF-04 a RF-10)
 
-Documental (subida, MinIO, OCR, validación, búsqueda) y alimentario (stock, recetas, PuLP). Se agregan a este archivo cuando lleguemos a cada uno.
+Se avanza con **S3 + MinIO temporal** y la base **Neon** hasta produccion; el VPS no bloquea. El detalle de las tareas siguientes se agrega a medida que se cierra cada diseno.
+
+- [x] **T-10 — Mapeo de solo lectura del esquema documental**
+  Leer `Fundacion_Nuestra_Esperanza_create.sql` completo y registrar en `design.md` §8 las tablas, columnas y discrepancias (nombres reales, `usuario_validacion_id`, `texto_ocr_tsv`, archivo SQL nuevo sin versionar, etc.).
+  *Hecho cuando:* el esquema documental y sus puntos abiertos quedan documentados antes de crear modelos. **Hecho:** ver `design.md` §8.
+
+- [x] **T-11 — Servicio S3/MinIO (`config/aws.js` + `services/s3.js`)**
+  Cliente S3-compatible configurable por entorno (`S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT`, `S3_FORCE_PATH_STYLE`, `S3_USE_SSL`). Funciones: subir, URL firmada, verificar existencia y eliminar.
+  *Hecho cuando:* AWS S3 real responde sin errores. **Verificado:** `HeadBucket` devolvió 200 contra AWS `us-east-2`. Para MinIO en el VPS solo se cambia `S3_ENDPOINT` y `S3_FORCE_PATH_STYLE=true`.
+
+## Pendiente de definir
+
+Alimentario (stock, recetas, PuLP) y el resto del documental (carga, OCR, validacion, busqueda) se agregan a este archivo cuando lleguemos a cada uno.

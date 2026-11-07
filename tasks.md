@@ -77,6 +77,15 @@ Se avanza con **S3 + MinIO temporal** y la base **Neon** hasta produccion; el VP
   Cliente S3-compatible configurable por entorno (`S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT`, `S3_FORCE_PATH_STYLE`, `S3_USE_SSL`). Funciones: subir, URL firmada, verificar existencia y eliminar.
   *Hecho cuando:* AWS S3 real responde sin errores. **Verificado:** `HeadBucket` devolvió 200 contra AWS `us-east-2`. Para MinIO en el VPS solo se cambia `S3_ENDPOINT` y `S3_FORCE_PATH_STYLE=true`.
 
+- [x] **T-12 — Modelos Sequelize del módulo documental**
+  `models/TipoDocumento.js`, `models/Documento.js` y las 6 tablas de extensión (`FichaSocialDatos`, `FichaSocialGrupoFamiliar`, `ReferenciaSocialDatos`, `AlmuerzoRegistro`, `SalidaEntradaRegistro`, `TicketTransporteRegistro`), más `models/index.js` con las asociaciones. Se agregó `ci` al modelo `Usuario`.
+  *Hecho cuando:* los modelos cargan y sus atributos coinciden con las columnas reales de Neon. **Verificado:** 9 modelos cargan; todas las columnas coinciden salvo `documentos.texto_ocr_tsv`, que se omite a propósito (se consulta con SQL crudo para RF-09). Las asociaciones de `Documento` y `FichaSocialDatos` cargan correctamente.
+
+- [ ] **T-13 — Rutas documentales y carga de archivos (RF-04, RF-05)**
+  Definir en `design.md` las rutas del módulo documental con método, path, roles y respuestas. Empezar por `GET /api/documentos/tipos` y `POST /api/documentos` (multer + `services/s3.js`, estado `estado_ocr='pendiente'` y `estado_validacion='pendiente'`).
+  *Requisito previo:* sembrar `tipos_documentos` y recrear el admin; ambos los ejecuta la persona a cargo. `multer@2.5.0` ya está instalado.
+  *Hecho cuando:* un admin o archivista sube un jpg/png/pdf válido, se guarda en S3, se crea la fila en `documentos` y la respuesta devuelve el id; un visitante recibe 403 en la carga.
+
 ## Pendiente de definir
 
 Alimentario (stock, recetas, PuLP) y el resto del documental (carga, OCR, validacion, busqueda) se agregan a este archivo cuando lleguemos a cada uno.

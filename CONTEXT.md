@@ -85,7 +85,7 @@ Una sola base, descartable, en Neon. La persona a cargo decidio no crear `fundac
 
 ### Lo que hace el agente en la proxima sesion
 
-**Esquema documental confirmado (2026-11-06).** `design.md` §8 ya describe las 20 tablas reales, y `config/aws.js` + `services/s3.js` están implementados y verificados (T-11). El siguiente paso es crear los **modelos Sequelize documentales** (`TipoDocumento`, `Documento` y las 6 extensiones) y luego los endpoints de carga/validación (RF-04/RF-05), respetando los puntos abiertos de `design.md` §8.9.
+**Modelos documentales creados (T-12).** `design.md` §8 describe las 20 tablas reales; `config/aws.js` + `services/s3.js` están implementados y verificados (T-11); y ya existen `TipoDocumento`, `Documento` y las 6 extensiones con sus asociaciones en `models/index.js`. **Verificado:** los 9 modelos cargan y coinciden con las columnas reales (se omite `texto_ocr_tsv` a propósito). **`multer@2.5.0` ya está instalado** (lo instaló la persona a cargo). El siguiente paso es **proponer las rutas del documental en `design.md`** (método, path, roles y respuestas) y luego implementar `GET /api/documentos/tipos` y `POST /api/documentos` con multer + S3 + estado OCR pendiente.
 
 Ver `tasks.md` para el detalle de cada tarea.
 
@@ -138,7 +138,7 @@ Alternativa sin tunel: `docker compose exec` en el VPS, donde `ocr_postgres` si 
 - **Un solo `.env`, sin `.env.test`.** La persona a cargo cambia `DATABASE_URL` a mano segun el ambiente. Reflejado en `design.md` §5 y `AGENTS.md`.
 - **Una sola base de datos, descartable.** No se crea `fundacion_test`: `neondb` sirve para desarrollo y pruebas mientras tanto. Perdio su estado vacio: ya tiene el admin. Sigue siendo desechable.
 - **`DB_PERMITIR_TEST=true` habilita correr pruebas contra cualquier base**, sin exigir que el nombre contenga `test`. El guard anterior (chequear el nombre) era una heuristica weak: daba sensacion de seguridad sin darla, porque una base de produccion llamada `neondb_test` habria pasado el filtro. El flag invierte la logica: bloquea por defecto y exige una declaracion explicita para desactivarlo. En produccion debe ser `false`.
-- **El agente nunca escribe en la base.** Todo cambio de esquema lo aplica la persona a cargo con `Fundacion_Nuestra_Esperanza_create.sql`, que es la unica fuente de verdad del esquema. El agente solo usa `npm run db:probar`, que es de solo lectura.
+- **El agente nunca escribe en la base.** Todo cambio de esquema lo aplica la persona a cargo con `Fundacion_Nuestra_Esperanza.sql` (20 tablas, confirmado 2026-11-06), que es la unica fuente de verdad del esquema. `Fundacion_Nuestra_Esperanza_create.sql` quedó obsoleto. El agente solo usa `npm run db:probar`, que es de solo lectura.
 - **Roles: `admin` / `archivista` / `visitante`.** Manda `design.md` §2 sobre el texto viejo de `AGENTS.md`.
 - **Probar a mano contra la base de desarrollo esta permitido.** La separacion protege a las pruebas automaticas, no al trabajo diario.
 - **La region de Neon no se cambia.** Solo sostiene dev y pruebas; produccion esta en el VPS.
@@ -160,7 +160,7 @@ Alternativa sin tunel: `docker compose exec` en el VPS, donde `ocr_postgres` si 
 1. ~~`AGENTS.md` linea 64 vs `design.md` §2~~ — **resuelta**, `AGENTS.md` ya dice `admin` / `archivista` / `visitante`.
 2. ~~`AGENTS.md` nombra `almuerzo_datos` / `salida_entrada_datos` y la base tiene `almuerzo_registro` / `salida_entrada_registro`~~ — **resuelta:** manda el SQL. `design.md` §8 lo documenta y `AGENTS.md` ya usa los nombres reales.
 3. ~~`config/aws.js` esta vacio y las variables `MINIO_*` del `.env` no las lee ningun modulo~~ — **resuelta:** T-11 implementado y verificado contra AWS S3 (`us-east-2`). MinIO del VPS se conecta cambiando `S3_ENDPOINT` y `S3_FORCE_PATH_STYLE`.
-4. **Parcial:** la base tiene 20 tablas y `design.md` §8.9 documenta el candidato, pero §8 sigue describiendo el borrador de 14. Falta reemplazar §8 cuando se apruebe el esquema.
+4. ~~La base tiene 14 tablas y `design.md` solo define `usuarios`~~ — **resuelta:** las 20 tablas están mapeadas en `design.md` §8, ya actualizado al esquema confirmado.
 5. ~~`documentos.usuario_validacion_id` es `NOT NULL`~~ — **resuelta en el candidato y en la base:** ya es nullable, asi que se puede crear el documento pendiente de validacion.
 6. ~~`entrada_inventario` / `salida_inventario` con `CHECK` sobre `tipo`~~ — **resuelta en el candidato:** las tablas son `ingreso_almacen` / `salida_almacen` y los CHECK ya no apuntan a una columna inexistente. Verificado en la base real.
 7. **`documentos.codigo` es `NOT NULL` pero no `UNIQUE`**, y RF-04 permite editar el codigo. Falta decidir si debe ser unico por tipo/fecha.
@@ -232,3 +232,17 @@ Se actualizaron las decisiones de la persona a cargo y se completo el mapeo de s
 
 - **Pendiente inmediato:** proponer `config/aws.js` + `services/s3.js` y esperar confirmacion antes de escribir codigo.
 - **Decisiones registradas:** usuario de prueba borrado, apellido del admin no se corrige, rotacion de contrasena al final, `/api-docs` se protege, MinIO temporal + Neon hasta produccion, frontend ya probado en `Fundacion-Esperanza-Fronend`.
+
+## Cierre de sesion (T-12 y esquema confirmado, 2026-11-06)
+
+Se cerro el esquema y se crearon los modelos del modulo documental.
+
+- **Esquema confirmado:** `Fundacion_Nuestra_Esperanza.sql` (20 tablas) es la fuente de verdad; `_create.sql` quedo obsoleto. La base Neon fue recreada y verificada con `npm run db:probar`: 20 tablas, sin constraints duplicados, `ticket_transporte_registro` presente, `documentos.usuario_validacion_id` nullable y las columnas de precios/tipo de cambio correctas.
+- **Pendiente operativo en la base:** `tipos_documentos` sigue con 0 filas y `usuarios` con 0 filas. Antes de probar la carga hay que sembrar los 5 tipos y recrear el admin. El agente no escribe en la base.
+- **T-12 hecha:** se crearon `models/TipoDocumento.js`, `models/Documento.js`, `models/FichaSocialDatos.js`, `models/FichaSocialGrupoFamiliar.js`, `models/ReferenciaSocialDatos.js`, `models/AlmuerzoRegistro.js`, `models/SalidaEntradaRegistro.js`, `models/TicketTransporteRegistro.js` y `models/index.js` con las asociaciones. Se agrego `ci` a `models/Usuario.js`.
+- **Verificacion:** los 9 modelos cargan y sus atributos coinciden con las columnas reales. Unica omision deliberada: `documentos.texto_ocr_tsv` (sin tipo `TSVECTOR` en Sequelize; se usara SQL crudo para RF-09).
+- **Dependencia:** `multer@2.5.0` instalado por la persona a cargo. No se uso todavia.
+- **Documentos actualizados:** `design.md` §8 (esquema de 20 tablas), `AGENTS.md` (fuente de verdad y tablas documentales), `tasks.md` (T-12) y este `CONTEXT.md`.
+- **No se hizo commit.** Todo queda en el working tree para revision.
+
+**Proxima accion concreta:** definir en `design.md` las rutas documentales y arrancar por `GET /api/documentos/tipos` y `POST /api/documentos` (multer + `services/s3.js`).

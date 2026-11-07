@@ -178,7 +178,7 @@ No se implementa hasta que el login del backend esté probado y exista el `AGENT
 
 ## 8. Módulo documental: esquema confirmado
 
-**Fuente:** `Fundacion_Nuestra_Esperanza.sql` (20 tablas, 2026-11-06). Es la única fuente de verdad del esquema, según `AGENTS.md`. La base Neon fue recreada con este archivo y verificada con `npm run db:probar` (20 tablas, sin constraints duplicados). **Todavía no se crearon modelos ni endpoints**: primero hay que cerrar los puntos abiertos de §8.9.
+**Fuente:** `Fundacion_Nuestra_Esperanza.sql` (20 tablas, 2026-11-06). Es la única fuente de verdad del esquema, según `AGENTS.md`. La base Neon fue recreada con este archivo y verificada con `npm run db:probar` (20 tablas, sin constraints duplicados). **Los modelos Sequelize ya están creados (T-12); todavía no hay endpoints.** Los puntos abiertos de §8.9 se cierran antes de implementar carga y búsqueda.
 
 El módulo documental toca 8 tablas: `documentos` (común), el catálogo `tipos_documentos` y 6 tablas de extensión. `ficha_social_datos` y `referencia_social_datos` son 1:1 con `documentos`; `almuerzo_registro`, `salida_entrada_registro` y `ticket_transporte_registro` son 1:N (varias filas por imagen); `ficha_social_grupo_familiar` es 1:N de `ficha_social_datos`.
 
@@ -210,6 +210,8 @@ El módulo documental toca 8 tablas: `documentos` (común), el catálogo `tipos_
 | `fecha_validacion` | timestamptz | sí | — | |
 
 Índices: `idx_documentos_fts` GIN sobre `texto_ocr_tsv` y `idx_documentos_tipo` sobre `tipos_documentos_id`.
+
+`texto_ocr_tsv` **no se mapea en Sequelize** porque no hay un tipo `TSVECTOR` en el ORM; se actualiza y consulta con SQL crudo cuando se implemente la búsqueda (RF-09).
 
 Flujo de estados: al cargar, `estado_ocr='pendiente'` y `estado_validacion='pendiente'`; cuando Textract termina, `estado_ocr='procesado'`; al validar, `estado_validacion='validado'` y se completa `usuario_validacion_id`. No hay estado "cargado" separado de "pendiente de OCR".
 

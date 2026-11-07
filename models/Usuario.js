@@ -48,6 +48,11 @@ const Usuario = sequelize.define(
       type: DataTypes.DATE,
       allowNull: false,
       defaultValue: DataTypes.NOW
+    },
+    ci: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      unique: true
     }
   },
   {

@@ -1,4 +1,14 @@
+#Documentos del proyecto
 node_modules
 .env
+
+#Documentos de bd
 Fundacion_Nuestra_Esperanza_create.sql
 Fundacion_Nuestra_Esperanza.sql
+
+#Otros documentos
+AGENTS.md
+CONTEXT.md
+design.md
+requirements.md
+tasks.md

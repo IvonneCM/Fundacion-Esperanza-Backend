@@ -29,6 +29,10 @@ const definicion = {
     {
       name: 'Usuarios',
       description: 'Gestion de usuarios. Solo administradores.'
+    },
+    {
+      name: 'Documentos',
+      description: 'Modulo documental: catalogo de tipos y carga de documentos.'
     }
   ],
   components: {
@@ -154,6 +158,58 @@ const definicion = {
           activo: {
             type: 'boolean',
             example: false
+          }
+        }
+      },
+      TipoDocumento: {
+        type: 'object',
+        description: 'Tipo de documento del catalogo.',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          nombre_tipo: {
+            type: 'string'
+          },
+          codigo: {
+            type: 'string',
+            maxLength: 10,
+            description: 'Codigo corto usado como segmento de la ruta en S3/MinIO.'
+          }
+        }
+      },
+      Documento: {
+        type: 'object',
+        description: 'Documento comun. Los metadatos por tipo viven en tablas de extension.',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          codigo: {
+            type: 'string',
+            maxLength: 30
+          },
+          tipos_documentos_id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          ruta_archivo: {
+            type: 'string',
+            description: 'Clave del objeto en S3/MinIO.'
+          },
+          estado_ocr: {
+            type: 'string',
+            enum: ['pendiente', 'procesado', 'error']
+          },
+          estado_validacion: {
+            type: 'string',
+            enum: ['pendiente', 'validado', 'rechazado']
+          },
+          fecha_registro: {
+            type: 'string',
+            format: 'date-time'
           }
         }
       },

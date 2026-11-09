@@ -5,6 +5,7 @@ import swaggerUi from 'swagger-ui-express';
 import saludRouter from './routes/salud.js';
 import authRouter from './routes/auth.js';
 import usuariosRouter from './routes/usuarios.js';
+import documentosRouter from './routes/documentos.js';
 import swaggerDocument from './config/swagger.js';
 
 dotenv.config();
@@ -19,6 +20,7 @@ app.use(express.json());
 app.use('/api', saludRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/usuarios', usuariosRouter);
+app.use('/api/documentos', documentosRouter);
 
 // Documentacion de la API (NFR-04): Swagger UI en /api-docs, spec en /api/docs/swagger.json
 app.get('/api/docs/swagger.json', (req, res) => {

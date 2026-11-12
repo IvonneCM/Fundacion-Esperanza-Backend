@@ -213,6 +213,466 @@ const definicion = {
           }
         }
       },
+      FichaSocialDatos: {
+        type: 'object',
+        description: 'Metadatos de ficha social (1:1 con el documento).',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          documento_id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          nombre_paciente: {
+            type: 'string'
+          },
+          fecha_nacimiento: {
+            type: 'string',
+            format: 'date'
+          },
+          edad_entrada: {
+            type: 'integer'
+          },
+          grado_escolaridad: {
+            type: 'string'
+          },
+          procedencia: {
+            type: 'string'
+          },
+          domicilio_zona: {
+            type: 'string'
+          },
+          calle: {
+            type: 'string'
+          },
+          numero_casa: {
+            type: 'string'
+          },
+          celular_padre: {
+            type: 'string'
+          },
+          celular_madre: {
+            type: 'string'
+          },
+          diagnostico: {
+            type: 'string'
+          },
+          fecha_diagnostico: {
+            type: 'string',
+            format: 'date'
+          },
+          medico_tratante: {
+            type: 'string'
+          },
+          hospital: {
+            type: 'string'
+          },
+          observaciones: {
+            type: 'string'
+          }
+        }
+      },
+      FichaSocialDatosCrear: {
+        type: 'object',
+        required: ['nombre_paciente'],
+        properties: {
+          nombre_paciente: {
+            type: 'string'
+          },
+          fecha_nacimiento: {
+            type: 'string',
+            format: 'date'
+          },
+          edad_entrada: {
+            type: 'integer'
+          },
+          grado_escolaridad: {
+            type: 'string'
+          },
+          procedencia: {
+            type: 'string'
+          },
+          domicilio_zona: {
+            type: 'string'
+          },
+          calle: {
+            type: 'string'
+          },
+          numero_casa: {
+            type: 'string'
+          },
+          celular_padre: {
+            type: 'string'
+          },
+          celular_madre: {
+            type: 'string'
+          },
+          diagnostico: {
+            type: 'string'
+          },
+          fecha_diagnostico: {
+            type: 'string',
+            format: 'date'
+          },
+          medico_tratante: {
+            type: 'string'
+          },
+          hospital: {
+            type: 'string'
+          },
+          observaciones: {
+            type: 'string'
+          }
+        }
+      },
+      FichaSocialGrupoFamiliar: {
+        type: 'object',
+        description: 'Integrante del grupo familiar (1:N de la ficha social).',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          ficha_social_id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          nombre_apellido: {
+            type: 'string'
+          },
+          parentesco: {
+            type: 'string'
+          },
+          edad: {
+            type: 'integer'
+          },
+          estado_civil: {
+            type: 'string'
+          },
+          grado_instruccion: {
+            type: 'string'
+          },
+          ocupacion: {
+            type: 'string'
+          }
+        }
+      },
+      FichaSocialGrupoFamiliarCrear: {
+        type: 'object',
+        required: ['nombre_apellido'],
+        properties: {
+          nombre_apellido: {
+            type: 'string'
+          },
+          parentesco: {
+            type: 'string'
+          },
+          edad: {
+            type: 'integer'
+          },
+          estado_civil: {
+            type: 'string'
+          },
+          grado_instruccion: {
+            type: 'string'
+          },
+          ocupacion: {
+            type: 'string'
+          }
+        }
+      },
+      ReferenciaSocialDatos: {
+        type: 'object',
+        description: 'Metadatos de referencia social (1:1 con el documento).',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          documento_id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          cite: {
+            type: 'string'
+          },
+          fecha: {
+            type: 'string',
+            format: 'date'
+          },
+          remitente_nombre: {
+            type: 'string'
+          },
+          remitente_cargo: {
+            type: 'string'
+          },
+          institucion_remitente: {
+            type: 'string'
+          },
+          nombre_paciente: {
+            type: 'string'
+          },
+          edad_paciente: {
+            type: 'string'
+          },
+          expediente_clinico: {
+            type: 'string'
+          },
+          diagnostico: {
+            type: 'string'
+          },
+          procedencia: {
+            type: 'string'
+          },
+          contenido: {
+            type: 'string'
+          }
+        }
+      },
+      ReferenciaSocialDatosCrear: {
+        type: 'object',
+        required: ['nombre_paciente'],
+        properties: {
+          cite: {
+            type: 'string'
+          },
+          fecha: {
+            type: 'string',
+            format: 'date'
+          },
+          remitente_nombre: {
+            type: 'string'
+          },
+          remitente_cargo: {
+            type: 'string'
+          },
+          institucion_remitente: {
+            type: 'string'
+          },
+          nombre_paciente: {
+            type: 'string'
+          },
+          edad_paciente: {
+            type: 'string'
+          },
+          expediente_clinico: {
+            type: 'string'
+          },
+          diagnostico: {
+            type: 'string'
+          },
+          procedencia: {
+            type: 'string'
+          },
+          contenido: {
+            type: 'string'
+          }
+        }
+      },
+      AlmuerzoRegistro: {
+        type: 'object',
+        description: 'Fila de registro de almuerzo (1:N con el documento).',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          documento_id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          fila_numero: {
+            type: 'integer'
+          },
+          fecha_almuerzo: {
+            type: 'string',
+            format: 'date'
+          },
+          apellido_paciente: {
+            type: 'string'
+          },
+          nombres_paciente: {
+            type: 'string'
+          },
+          nombre_cuidador: {
+            type: 'string'
+          },
+          hospital: {
+            type: 'string'
+          },
+          cantidad_almuerzos: {
+            type: 'integer'
+          },
+          estado_fila_validacion: {
+            type: 'string',
+            enum: ['pendiente', 'validado', 'rechazado']
+          }
+        }
+      },
+      AlmuerzoRegistroCrear: {
+        type: 'object',
+        required: ['nombres_paciente'],
+        properties: {
+          fila_numero: {
+            type: 'integer'
+          },
+          fecha_almuerzo: {
+            type: 'string',
+            format: 'date'
+          },
+          apellido_paciente: {
+            type: 'string'
+          },
+          nombres_paciente: {
+            type: 'string'
+          },
+          nombre_cuidador: {
+            type: 'string'
+          },
+          hospital: {
+            type: 'string'
+          },
+          cantidad_almuerzos: {
+            type: 'integer'
+          }
+        }
+      },
+      SalidaEntradaRegistro: {
+        type: 'object',
+        description: 'Fila de registro de salida/entrada (1:N con el documento).',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          documento_id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          fila_numero: {
+            type: 'integer'
+          },
+          nombre_nino: {
+            type: 'string'
+          },
+          nombre_acompanante: {
+            type: 'string'
+          },
+          ci_acompanante: {
+            type: 'string'
+          },
+          celular_acompanante: {
+            type: 'string'
+          },
+          fecha_ingreso: {
+            type: 'string',
+            format: 'date'
+          },
+          fecha_salida: {
+            type: 'string',
+            format: 'date'
+          },
+          estado_fila_validacion: {
+            type: 'string',
+            enum: ['pendiente', 'validado', 'rechazado']
+          }
+        }
+      },
+      SalidaEntradaRegistroCrear: {
+        type: 'object',
+        required: ['nombre_nino'],
+        properties: {
+          fila_numero: {
+            type: 'integer'
+          },
+          nombre_nino: {
+            type: 'string'
+          },
+          nombre_acompanante: {
+            type: 'string'
+          },
+          ci_acompanante: {
+            type: 'string'
+          },
+          celular_acompanante: {
+            type: 'string'
+          },
+          fecha_ingreso: {
+            type: 'string',
+            format: 'date'
+          },
+          fecha_salida: {
+            type: 'string',
+            format: 'date'
+          }
+        }
+      },
+      TicketTransporteRegistro: {
+        type: 'object',
+        description: 'Fila de ticket de transporte (1:N con el documento).',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          documento_id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          fila_numero: {
+            type: 'integer'
+          },
+          fecha_ticket: {
+            type: 'string',
+            format: 'date'
+          },
+          nombre_solicitante: {
+            type: 'string'
+          },
+          nro_ticket: {
+            type: 'string'
+          },
+          ruta: {
+            type: 'string'
+          },
+          tipo_viaje: {
+            type: 'string',
+            enum: ['ida', 'vuelta', 'ida_vuelta']
+          },
+          estado_fila_validacion: {
+            type: 'string',
+            enum: ['pendiente', 'validado', 'rechazado']
+          }
+        }
+      },
+      TicketTransporteRegistroCrear: {
+        type: 'object',
+        required: ['nombre_solicitante'],
+        properties: {
+          fila_numero: {
+            type: 'integer'
+          },
+          fecha_ticket: {
+            type: 'string',
+            format: 'date'
+          },
+          nombre_solicitante: {
+            type: 'string'
+          },
+          nro_ticket: {
+            type: 'string'
+          },
+          ruta: {
+            type: 'string'
+          },
+          tipo_viaje: {
+            type: 'string',
+            enum: ['ida', 'vuelta', 'ida_vuelta']
+          }
+        }
+      },
       ErrorValidacion: {
         type: 'object',
         properties: {

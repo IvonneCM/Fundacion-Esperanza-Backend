@@ -1,10 +1,15 @@
 import { Router } from 'express';
-import { body } from 'express-validator';
-import { getTipos, crearDocumento } from '../controllers/documentos.js';
+import { body, param } from 'express-validator';
+import { getTipos, crearDocumento, actualizarCodigo } from '../controllers/documentos.js';
 import { validarCampos } from '../middlewares/validar-campos.js';
 import { validarJWT } from '../middlewares/validar-jwt.js';
 import { validarRol } from '../middlewares/validar-rol.js';
 import { procesarArchivo } from '../middlewares/procesar-archivo.js';
+import fichasSocialesRouter from './fichas-sociales.js';
+import referenciasSocialesRouter from './referencias-sociales.js';
+import almuerzosRouter from './almuerzos.js';
+import salidasEntradasRouter from './salidas-entradas.js';
+import ticketsTransporteRouter from './tickets-transporte.js';
 
 const router = Router();
 
@@ -78,7 +83,10 @@ router.get('/tipos', getTipos);
  *               codigo:
  *                 type: string
  *                 maxLength: 30
- *                 description: Codigo opcional. Si no viene se genera uno.
+ *                 description: >
+ *                   Opcional. Si no se envia (o se envia vacio) se genera
+ *                   `{CODIGO_TIPO}-{YYYYMMDD}-{HHMMSS}`. En Swagger UI, borra
+ *                   el valor de ejemplo "string" antes de enviar.
  *     responses:
  *       201:
  *         description: Documento cargado.
@@ -128,5 +136,82 @@ router.post(
   validarCampos,
   crearDocumento
 );
+
+/**
+ * @openapi
+ * /api/documentos/{id}/codigo:
+ *   patch:
+ *     tags: [Documentos]
+ *     summary: Editar el codigo de un documento
+ *     description: >
+ *       Cambia solo `documentos.codigo`. No renombra el objeto en S3/MinIO:
+ *       `ruta_archivo` queda igual.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [codigo]
+ *             properties:
+ *               codigo:
+ *                 type: string
+ *                 maxLength: 30
+ *     responses:
+ *       200:
+ *         description: Codigo actualizado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                 msg:
+ *                   type: string
+ *                 documento:
+ *                   $ref: '#/components/schemas/Documento'
+ *       400:
+ *         description: Codigo invalido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Rol no autorizado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Documento no encontrado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.patch(
+  '/:id/codigo',
+  validarRol('admin', 'archivista'),
+  param('id').isUUID().withMessage('El id del documento debe ser un UUID valido'),
+  body('codigo').notEmpty().withMessage('El codigo es obligatorio').isLength({ max: 30 }).withMessage('El codigo no puede superar 30 caracteres'),
+  validarCampos,
+  actualizarCodigo
+);
+
+router.use('/:id/ficha-social', fichasSocialesRouter);
+router.use('/:id/referencia-social', referenciasSocialesRouter);
+router.use('/:id/almuerzos', almuerzosRouter);
+router.use('/:id/salidas-entradas', salidasEntradasRouter);
+router.use('/:id/tickets', ticketsTransporteRouter);
 
 export default router;

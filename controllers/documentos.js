@@ -129,7 +129,39 @@ export const crearDocumento = async (req, res) => {
   }
 };
 
+export const actualizarCodigo = async (req, res) => {
+  try {
+    const documento = await Documento.findByPk(req.params.id);
+
+    if (!documento) {
+      return res.status(404).json({ ok: false, msg: 'Documento no encontrado' });
+    }
+
+    const codigoFinal = sanearCodigo(req.body.codigo);
+
+    if (!codigoFinal) {
+      return res.status(400).json({ ok: false, msg: 'El codigo no es valido' });
+    }
+
+    if (codigoFinal.length > MAXIMO_CODIGO) {
+      return res.status(400).json({ ok: false, msg: `El codigo no puede superar ${MAXIMO_CODIGO} caracteres` });
+    }
+
+    documento.codigo = codigoFinal;
+    await documento.save();
+
+    return res.json({
+      ok: true,
+      msg: 'Codigo actualizado',
+      documento: documentoPublico(documento)
+    });
+  } catch (error) {
+    responderError(res, error);
+  }
+};
+
 export default {
   getTipos,
-  crearDocumento
+  crearDocumento,
+  actualizarCodigo
 };

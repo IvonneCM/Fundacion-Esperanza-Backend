@@ -1,6 +1,6 @@
 import path from 'node:path';
-import Documento from '../models/Documento.js';
-import TipoDocumento from '../models/TipoDocumento.js';
+import { Op } from 'sequelize';
+import { Documento, TipoDocumento } from '../models/index.js';
 import { subirArchivo, eliminarArchivo } from '../services/s3.js';
 
 const EXTENSIONES_PERMITIDAS = ['jpg', 'jpeg', 'png', 'pdf'];
@@ -56,16 +56,114 @@ const documentoPublico = (documento) => ({
   fecha_registro: documento.fecha_registro
 });
 
-export const getTipos = async (req, res) => {
+const PAGINA_POR_DEFECTO = 1;
+const LIMITE_POR_DEFECTO = 20;
+
+const esFechaSola = (fecha) => /^\d{4}-\d{2}-\d{2}$/.test(fecha);
+
+const finDelDia = (fecha) => {
+  const fin = new Date(`${fecha}T00:00:00.000Z`);
+  fin.setUTCDate(fin.getUTCDate() + 1);
+  return fin;
+};
+
+const documentoListado = (documento) => ({
+  id: documento.id,
+  codigo: documento.codigo,
+  tipos_documentos_id: documento.tipos_documentos_id,
+  tipo: documento.tipoDocumento
+    ? {
+        id: documento.tipoDocumento.id,
+        nombre_tipo: documento.tipoDocumento.nombre_tipo,
+        codigo: documento.tipoDocumento.codigo
+      }
+    : null,
+  ruta_archivo: documento.ruta_archivo,
+  estado_ocr: documento.estado_ocr,
+  estado_validacion: documento.estado_validacion,
+  fecha_registro: documento.fecha_registro,
+  fecha_validacion: documento.fecha_validacion
+});
+
+export const getDocumentos = async (req, res) => {
   try {
-    const tipos = await TipoDocumento.findAll({
-      order: [['nombre_tipo', 'ASC']]
+    const where = {};
+    const pagina = Number(req.query.pagina) || PAGINA_POR_DEFECTO;
+    const limite = Number(req.query.limite) || LIMITE_POR_DEFECTO;
+
+    if (req.usuario.rol === 'visitante') {
+      where.estado_validacion = 'validado';
+    } else if (req.query.estado_validacion) {
+      where.estado_validacion = req.query.estado_validacion;
+    }
+
+    if (req.query.estado_ocr) {
+      where.estado_ocr = req.query.estado_ocr;
+    }
+
+    if (req.query.tipos_documentos_id) {
+      where.tipos_documentos_id = req.query.tipos_documentos_id;
+    }
+
+    if (req.query.codigo) {
+      where.codigo = { [Op.iLike]: `%${req.query.codigo}%` };
+    }
+
+    if (req.query.q) {
+      where[Op.or] = [
+        { codigo: { [Op.iLike]: `%${req.query.q}%` } },
+        { texto_ocr: { [Op.iLike]: `%${req.query.q}%` } }
+      ];
+    }
+
+    if (req.query.fecha_desde) {
+      where.fecha_registro = {
+        ...(where.fecha_registro || {}),
+        [Op.gte]: new Date(req.query.fecha_desde)
+      };
+    }
+
+    if (req.query.fecha_hasta) {
+      if (esFechaSola(req.query.fecha_hasta)) {
+        where.fecha_registro = {
+          ...(where.fecha_registro || {}),
+          [Op.lt]: finDelDia(req.query.fecha_hasta)
+        };
+      } else {
+        where.fecha_registro = {
+          ...(where.fecha_registro || {}),
+          [Op.lte]: new Date(req.query.fecha_hasta)
+        };
+      }
+    }
+
+    const incluirTipo = {
+      model: TipoDocumento,
+      as: 'tipoDocumento',
+      attributes: ['id', 'nombre_tipo', 'codigo']
+    };
+
+    if (req.query.tipo) {
+      incluirTipo.where = { codigo: String(req.query.tipo).toUpperCase() };
+      incluirTipo.required = true;
+    }
+
+    const { count, rows } = await Documento.findAndCountAll({
+      where,
+      include: [incluirTipo],
+      order: [['fecha_registro', 'DESC']],
+      limit: limite,
+      offset: (pagina - 1) * limite,
+      distinct: true
     });
 
     return res.json({
       ok: true,
-      msg: 'Tipos de documento obtenidos',
-      tipos
+      msg: 'Documentos obtenidos',
+      total: count,
+      pagina,
+      limite,
+      documentos: rows.map(documentoListado)
     });
   } catch (error) {
     responderError(res, error);
@@ -161,7 +259,7 @@ export const actualizarCodigo = async (req, res) => {
 };
 
 export default {
-  getTipos,
+  getDocumentos,
   crearDocumento,
   actualizarCodigo
 };

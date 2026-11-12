@@ -43,15 +43,22 @@ export const crearControladorFilas = ({
         return;
       }
 
-      const filas = await modelo.findAll({
+      const pagina = Number(req.query.pagina) || 1;
+      const limite = Number(req.query.limite) || 20;
+      const { count, rows } = await modelo.findAndCountAll({
         where: { documento_id: documento.id },
-        order: [['fila_numero', 'ASC']]
+        order: [['fila_numero', 'ASC']],
+        limit: limite,
+        offset: (pagina - 1) * limite
       });
 
       return res.json({
         ok: true,
         msg: `${nombreRecurso} obtenidos`,
-        filas
+        total: count,
+        pagina,
+        limite,
+        filas: rows
       });
     } catch (error) {
       responderError(res, error);

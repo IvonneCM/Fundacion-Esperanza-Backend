@@ -32,7 +32,7 @@ const definicion = {
     },
     {
       name: 'Documentos',
-      description: 'Modulo documental: catalogo de tipos y carga de documentos.'
+      description: 'Modulo documental: catalogo de tipos, carga, metadatos, busqueda y paginacion.'
     }
   ],
   components: {
@@ -176,6 +176,87 @@ const definicion = {
             type: 'string',
             maxLength: 10,
             description: 'Codigo corto usado como segmento de la ruta en S3/MinIO.'
+          }
+        }
+      },
+      TipoDocumentoCrear: {
+        type: 'object',
+        required: ['nombre_tipo', 'codigo'],
+        properties: {
+          nombre_tipo: {
+            type: 'string',
+            maxLength: 50
+          },
+          codigo: {
+            type: 'string',
+            maxLength: 10,
+            description: 'Unico. Se normaliza a mayusculas y no se puede editar despues.'
+          }
+        }
+      },
+      TipoDocumentoEditar: {
+        type: 'object',
+        required: ['nombre_tipo'],
+        description: 'El codigo no es editable: si se envia uno distinto al actual responde 400.',
+        properties: {
+          nombre_tipo: {
+            type: 'string',
+            maxLength: 50
+          }
+        }
+      },
+      DocumentoListado: {
+        type: 'object',
+        description: 'Documento en la lista/busqueda, con el tipo resumido.',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          codigo: {
+            type: 'string',
+            maxLength: 30
+          },
+          tipos_documentos_id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          tipo: {
+            type: 'object',
+            nullable: true,
+            properties: {
+              id: {
+                type: 'string',
+                format: 'uuid'
+              },
+              nombre_tipo: {
+                type: 'string'
+              },
+              codigo: {
+                type: 'string'
+              }
+            }
+          },
+          ruta_archivo: {
+            type: 'string',
+            description: 'Clave del objeto en S3/MinIO.'
+          },
+          estado_ocr: {
+            type: 'string',
+            enum: ['pendiente', 'procesado', 'error']
+          },
+          estado_validacion: {
+            type: 'string',
+            enum: ['pendiente', 'validado', 'rechazado']
+          },
+          fecha_registro: {
+            type: 'string',
+            format: 'date-time'
+          },
+          fecha_validacion: {
+            type: 'string',
+            format: 'date-time',
+            nullable: true
           }
         }
       },

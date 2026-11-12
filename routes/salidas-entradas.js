@@ -7,6 +7,7 @@ import {
   eliminarFila
 } from '../controllers/salidas-entradas.js';
 import { validarCampos } from '../middlewares/validar-campos.js';
+import { validarPaginacion } from '../middlewares/validar-paginacion.js';
 import { validarRol } from '../middlewares/validar-rol.js';
 
 const router = Router({ mergeParams: true });
@@ -31,6 +32,19 @@ const validarFila = param('filaId').isUUID().withMessage('El id de la fila debe 
  *         schema:
  *           type: string
  *           format: uuid
+ *       - in: query
+ *         name: pagina
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *       - in: query
+ *         name: limite
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
  *     responses:
  *       200:
  *         description: Filas de salidas y entradas.
@@ -43,6 +57,12 @@ const validarFila = param('filaId').isUUID().withMessage('El id de la fila debe 
  *                   type: boolean
  *                 msg:
  *                   type: string
+ *                 total:
+ *                   type: integer
+ *                 pagina:
+ *                   type: integer
+ *                 limite:
+ *                   type: integer
  *                 filas:
  *                   type: array
  *                   items:
@@ -77,7 +97,7 @@ const validarFila = param('filaId').isUUID().withMessage('El id de la fila debe 
  *       404:
  *         description: Documento no encontrado.
  */
-router.get('/', validarDocumento, validarCampos, getFilas);
+router.get('/', validarDocumento, ...validarPaginacion, validarCampos, getFilas);
 
 router.post(
   '/',

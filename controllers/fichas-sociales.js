@@ -153,15 +153,22 @@ export const getGrupoFamiliar = async (req, res) => {
       return;
     }
 
-    const grupo_familiar = await FichaSocialGrupoFamiliar.findAll({
+    const pagina = Number(req.query.pagina) || 1;
+    const limite = Number(req.query.limite) || 20;
+    const { count, rows } = await FichaSocialGrupoFamiliar.findAndCountAll({
       where: { ficha_social_id: ficha.id },
-      order: [['nombre_apellido', 'ASC']]
+      order: [['nombre_apellido', 'ASC']],
+      limit: limite,
+      offset: (pagina - 1) * limite
     });
 
     return res.json({
       ok: true,
       msg: 'Grupo familiar obtenido',
-      grupo_familiar
+      total: count,
+      pagina,
+      limite,
+      grupo_familiar: rows
     });
   } catch (error) {
     responderError(res, error);

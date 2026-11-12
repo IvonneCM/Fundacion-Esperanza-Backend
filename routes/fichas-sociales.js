@@ -9,6 +9,7 @@ import {
   eliminarGrupoFamiliar
 } from '../controllers/fichas-sociales.js';
 import { validarCampos } from '../middlewares/validar-campos.js';
+import { validarPaginacion } from '../middlewares/validar-paginacion.js';
 import { validarRol } from '../middlewares/validar-rol.js';
 
 const router = Router({ mergeParams: true });
@@ -110,6 +111,19 @@ router.put(
  *         schema:
  *           type: string
  *           format: uuid
+ *       - in: query
+ *         name: pagina
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *       - in: query
+ *         name: limite
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
  *     responses:
  *       200:
  *         description: Grupo familiar.
@@ -122,6 +136,12 @@ router.put(
  *                   type: boolean
  *                 msg:
  *                   type: string
+ *                 total:
+ *                   type: integer
+ *                 pagina:
+ *                   type: integer
+ *                 limite:
+ *                   type: integer
  *                 grupo_familiar:
  *                   type: array
  *                   items:
@@ -156,7 +176,7 @@ router.put(
  *       404:
  *         description: Documento o ficha social no encontrados.
  */
-router.get('/grupo-familiar', validarDocumento, validarCampos, getGrupoFamiliar);
+router.get('/grupo-familiar', validarDocumento, ...validarPaginacion, validarCampos, getGrupoFamiliar);
 
 router.post(
   '/grupo-familiar',

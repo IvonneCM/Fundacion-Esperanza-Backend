@@ -260,6 +260,31 @@ const definicion = {
           }
         }
       },
+      ResumenTipo: {
+        type: 'object',
+        description:
+          'Conteo de documentos de un tipo. Para `visitante`, `total` cuenta solo validados y ' +
+          '`por_validar` se omite.',
+        properties: {
+          tipos_documentos_id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          codigo: {
+            type: 'string'
+          },
+          nombre_tipo: {
+            type: 'string'
+          },
+          total: {
+            type: 'integer'
+          },
+          por_validar: {
+            type: 'integer',
+            description: 'Solo admin/archivista. Documentos pendientes de validacion.'
+          }
+        }
+      },
       Documento: {
         type: 'object',
         description: 'Documento comun. Los metadatos por tipo viven en tablas de extension.',

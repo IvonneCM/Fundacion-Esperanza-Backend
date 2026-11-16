@@ -1,6 +1,13 @@
 import { Router } from 'express';
 import { body, param, query } from 'express-validator';
-import { getDocumentos, crearDocumento, actualizarCodigo } from '../controllers/documentos.js';
+import {
+  getDocumentos,
+  getResumen,
+  getDocumento,
+  getArchivoDocumento,
+  crearDocumento,
+  actualizarCodigo
+} from '../controllers/documentos.js';
 import { ESTADOS_OCR, ESTADOS_VALIDACION } from '../models/Documento.js';
 import { validarCampos } from '../middlewares/validar-campos.js';
 import { validarJWT } from '../middlewares/validar-jwt.js';
@@ -28,7 +35,9 @@ router.use('/tipos', tiposDocumentosRouter);
  *     description: >
  *       Disponible para todos los roles. `visitante` solo ve documentos con
  *       `estado_validacion='validado'` (el servidor fuerza el filtro). `q` busca
- *       en `codigo` y `texto_ocr`. Orden: `fecha_registro` descendente.
+ *       en `codigo`, `texto_ocr` y en los nombres de paciente de los metadatos
+ *       (ficha, referencia, almuerzos, salidas/entradas y tickets).
+ *       Orden: `fecha_registro` descendente.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -330,5 +339,183 @@ router.use('/:id/referencia-social', referenciasSocialesRouter);
 router.use('/:id/almuerzos', almuerzosRouter);
 router.use('/:id/salidas-entradas', salidasEntradasRouter);
 router.use('/:id/tickets', ticketsTransporteRouter);
+
+/**
+ * @openapi
+ * /api/documentos/resumen:
+ *   get:
+ *     tags: [Documentos]
+ *     summary: Conteos por tipo de documento
+ *     description: >
+ *       Disponible para todos los roles. Devuelve los tipos del catalogo aunque
+ *       no tengan documentos. Para `visitante` el `total` cuenta solo documentos
+ *       validados y `por_validar` se omite. `por_validar` cuenta los documentos
+ *       con `estado_validacion='pendiente'` (los rechazados no cuentan).
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Conteos por tipo.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                 resumen:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/ResumenTipo'
+ *       401:
+ *         description: Sin token o token invalido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.get('/resumen', getResumen);
+
+/**
+ * @openapi
+ * /api/documentos/{id}:
+ *   get:
+ *     tags: [Documentos]
+ *     summary: Detalle de un documento
+ *     description: >
+ *       Disponible para todos los roles. `visitante` solo puede ver documentos con
+ *       `estado_validacion='validado'`; si no lo esta, responde 404 para no revelar
+ *       que existe. No incrusta metadatos: se consultan con los subrecursos.
+ *       Para tipos tabulares (`ALMUERZOS`, `SALIDAS`, `TICKETS`) agrega
+ *       `filas: { total, validadas }`.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Documento con su tipo resumido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                 documento:
+ *                   allOf:
+ *                     - $ref: '#/components/schemas/DocumentoListado'
+ *                     - type: object
+ *                       properties:
+ *                         filas:
+ *                           type: object
+ *                           description: Solo para tipos tabulares.
+ *                           properties:
+ *                             total:
+ *                               type: integer
+ *                             validadas:
+ *                               type: integer
+ *       400:
+ *         description: Id invalido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorValidacion'
+ *       401:
+ *         description: Sin token o token invalido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: No existe o no es visible para el rol.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.get(
+  '/:id',
+  param('id').isUUID().withMessage('El id del documento debe ser un UUID valido'),
+  validarCampos,
+  getDocumento
+);
+
+/**
+ * @openapi
+ * /api/documentos/{id}/archivo:
+ *   get:
+ *     tags: [Documentos]
+ *     summary: URL firmada del archivo original
+ *     description: >
+ *       Disponible para todos los roles, con la misma regla de visibilidad que el
+ *       detalle. Firma una URL temporal de S3/MinIO para que el navegador descargue
+ *       el original directo. La duracion se configura con `S3_URL_EXPIRA_SEGUNDOS`
+ *       (minimo 60; por defecto 900). `expira_en` es una fecha ISO-8601.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: URL firmada vigente.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                 url_firmada:
+ *                   type: string
+ *                   description: URL temporal de S3/MinIO.
+ *                 expira_en:
+ *                   type: string
+ *                   format: date-time
+ *                   description: Momento en que la URL deja de ser valida.
+ *       400:
+ *         description: Id invalido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorValidacion'
+ *       401:
+ *         description: Sin token o token invalido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Documento, archivo inexistente o no visible para el rol.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.get(
+  '/:id/archivo',
+  param('id').isUUID().withMessage('El id del documento debe ser un UUID valido'),
+  validarCampos,
+  getArchivoDocumento
+);
 
 export default router;

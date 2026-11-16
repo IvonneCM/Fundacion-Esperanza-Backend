@@ -1,7 +1,25 @@
 import path from 'node:path';
-import { Op } from 'sequelize';
-import { Documento, TipoDocumento } from '../models/index.js';
-import { subirArchivo, eliminarArchivo } from '../services/s3.js';
+import { Op, Sequelize } from 'sequelize';
+import {
+  sequelize,
+  Documento,
+  TipoDocumento,
+  AlmuerzoRegistro,
+  SalidaEntradaRegistro,
+  TicketTransporteRegistro
+} from '../models/index.js';
+import {
+  subirArchivo,
+  eliminarArchivo,
+  existeArchivo,
+  obtenerUrlFirmada,
+  EXPIRACION_URL_SEGUNDOS
+} from '../services/s3.js';
+import {
+  filtroDocumentosVisibles,
+  puedeVerDocumento,
+  puedeVerPendientes
+} from '../utils/visibilidad-documentos.js';
 
 const EXTENSIONES_PERMITIDAS = ['jpg', 'jpeg', 'png', 'pdf'];
 const EXTENSION_POR_MIME = {
@@ -10,6 +28,30 @@ const EXTENSION_POR_MIME = {
   'application/pdf': 'pdf'
 };
 const MAXIMO_CODIGO = 30;
+
+const MODELO_POR_TIPO_TABULAR = {
+  ALMUERZOS: AlmuerzoRegistro,
+  SALIDAS: SalidaEntradaRegistro,
+  TICKETS: TicketTransporteRegistro
+};
+
+const BUSQUEDAS_METADATOS = [
+  { tabla: 'ficha_social_datos', columna: 'nombre_paciente' },
+  { tabla: 'referencia_social_datos', columna: 'nombre_paciente' },
+  { tabla: 'almuerzo_registro', columna: 'nombres_paciente' },
+  { tabla: 'salida_entrada_registro', columna: 'nombre_nino' },
+  { tabla: 'ticket_transporte_registro', columna: 'nombre_solicitante' }
+];
+
+const busquedasMetadatos = (texto) => {
+  const patron = sequelize.escape(`%${texto}%`);
+
+  return BUSQUEDAS_METADATOS.map(({ tabla, columna }) =>
+    Sequelize.literal(
+      `EXISTS (SELECT 1 FROM "${tabla}" WHERE "${tabla}"."documento_id" = "Documento"."id" AND "${tabla}"."${columna}" ILIKE ${patron})`
+    )
+  );
+};
 
 const responderError = (res, error) => {
   console.log(error);
@@ -91,9 +133,11 @@ export const getDocumentos = async (req, res) => {
     const pagina = Number(req.query.pagina) || PAGINA_POR_DEFECTO;
     const limite = Number(req.query.limite) || LIMITE_POR_DEFECTO;
 
-    if (req.usuario.rol === 'visitante') {
-      where.estado_validacion = 'validado';
-    } else if (req.query.estado_validacion) {
+    const filtroVisibilidad = filtroDocumentosVisibles(req.usuario);
+
+    Object.assign(where, filtroVisibilidad);
+
+    if (!filtroVisibilidad.estado_validacion && req.query.estado_validacion) {
       where.estado_validacion = req.query.estado_validacion;
     }
 
@@ -112,7 +156,8 @@ export const getDocumentos = async (req, res) => {
     if (req.query.q) {
       where[Op.or] = [
         { codigo: { [Op.iLike]: `%${req.query.q}%` } },
-        { texto_ocr: { [Op.iLike]: `%${req.query.q}%` } }
+        { texto_ocr: { [Op.iLike]: `%${req.query.q}%` } },
+        ...busquedasMetadatos(req.query.q)
       ];
     }
 
@@ -164,6 +209,143 @@ export const getDocumentos = async (req, res) => {
       pagina,
       limite,
       documentos: rows.map(documentoListado)
+    });
+  } catch (error) {
+    responderError(res, error);
+  }
+};
+
+export const getResumen = async (req, res) => {
+  try {
+    const tipos = await TipoDocumento.findAll({
+      order: [['nombre_tipo', 'ASC']]
+    });
+
+    const filasPorTipo = await Documento.findAll({
+      attributes: [
+        'tipos_documentos_id',
+        [Sequelize.fn('COUNT', Sequelize.col('id')), 'total'],
+        [
+          Sequelize.fn(
+            'SUM',
+            Sequelize.literal(`CASE WHEN estado_validacion = 'pendiente' THEN 1 ELSE 0 END`)
+          ),
+          'por_validar'
+        ]
+      ],
+      where: filtroDocumentosVisibles(req.usuario),
+      group: ['tipos_documentos_id'],
+      raw: true
+    });
+
+    const conteos = new Map(
+      filasPorTipo.map((fila) => [
+        fila.tipos_documentos_id,
+        {
+          total: Number(fila.total) || 0,
+          por_validar: Number(fila.por_validar) || 0
+        }
+      ])
+    );
+
+    const mostrarPendientes = puedeVerPendientes(req.usuario);
+
+    const resumen = tipos.map((tipo) => {
+      const conteo = conteos.get(tipo.id) || { total: 0, por_validar: 0 };
+
+      const item = {
+        tipos_documentos_id: tipo.id,
+        codigo: tipo.codigo,
+        nombre_tipo: tipo.nombre_tipo,
+        total: conteo.total
+      };
+
+      if (mostrarPendientes) {
+        item.por_validar = conteo.por_validar;
+      }
+
+      return item;
+    });
+
+    return res.json({
+      ok: true,
+      msg: 'Resumen de documentos obtenido',
+      resumen
+    });
+  } catch (error) {
+    responderError(res, error);
+  }
+};
+
+export const getDocumento = async (req, res) => {
+  try {
+    const documento = await Documento.findByPk(req.params.id, {
+      include: [
+        {
+          model: TipoDocumento,
+          as: 'tipoDocumento',
+          attributes: ['id', 'nombre_tipo', 'codigo']
+        }
+      ]
+    });
+
+    if (!documento || !puedeVerDocumento(req.usuario, documento)) {
+      return res.status(404).json({ ok: false, msg: 'Documento no encontrado' });
+    }
+
+    const detalle = documentoListado(documento);
+    const modeloFilas = documento.tipoDocumento
+      ? MODELO_POR_TIPO_TABULAR[documento.tipoDocumento.codigo]
+      : null;
+
+    if (modeloFilas) {
+      const [total, validadas] = await Promise.all([
+        modeloFilas.count({
+          where: { documento_id: documento.id }
+        }),
+        modeloFilas.count({
+          where: {
+            documento_id: documento.id,
+            estado_fila_validacion: 'validado'
+          }
+        })
+      ]);
+
+      detalle.filas = { total, validadas };
+    }
+
+    return res.json({
+      ok: true,
+      msg: 'Documento obtenido',
+      documento: detalle
+    });
+  } catch (error) {
+    responderError(res, error);
+  }
+};
+
+export const getArchivoDocumento = async (req, res) => {
+  try {
+    const documento = await Documento.findByPk(req.params.id);
+
+    if (!documento || !puedeVerDocumento(req.usuario, documento)) {
+      return res.status(404).json({ ok: false, msg: 'Documento no encontrado' });
+    }
+
+    const existe = await existeArchivo(documento.ruta_archivo);
+
+    if (!existe) {
+      return res.status(404).json({ ok: false, msg: 'Archivo no encontrado' });
+    }
+
+    const urlFirmada = await obtenerUrlFirmada(documento.ruta_archivo);
+    const expiraEn = new Date(Date.now() + EXPIRACION_URL_SEGUNDOS * 1000).toISOString();
+
+    return res.json({
+      ok: true,
+      msg: 'Archivo disponible',
+      url_firmada: urlFirmada,
+      expira_en: expiraEn
     });
   } catch (error) {
     responderError(res, error);
@@ -260,6 +442,9 @@ export const actualizarCodigo = async (req, res) => {
 
 export default {
   getDocumentos,
+  getResumen,
+  getDocumento,
+  getArchivoDocumento,
   crearDocumento,
   actualizarCodigo
 };

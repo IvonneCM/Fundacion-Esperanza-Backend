@@ -7,7 +7,19 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { bucket, s3 } from '../config/aws.js';
 
-const EXPIRACION_URL_SEGUNDOS = 3600;
+const EXPIRACION_POR_DEFECTO_SEGUNDOS = 900;
+
+const leerExpiracion = () => {
+  const valor = Number(process.env.S3_URL_EXPIRA_SEGUNDOS);
+
+  if (!Number.isInteger(valor) || valor < 60) {
+    return EXPIRACION_POR_DEFECTO_SEGUNDOS;
+  }
+
+  return valor;
+};
+
+export const EXPIRACION_URL_SEGUNDOS = leerExpiracion();
 
 export const subirArchivo = async ({ clave, contenido, tipoContenido }) => {
   const comando = new PutObjectCommand({

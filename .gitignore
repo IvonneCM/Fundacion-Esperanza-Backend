@@ -5,6 +5,7 @@ node_modules
 #Documentos de bd
 Fundacion_Nuestra_Esperanza_create.sql
 Fundacion_Nuestra_Esperanza.sql
+migracion_*.sql
 
 #Otros documentos
 AGENTS.md

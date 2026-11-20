@@ -8,6 +8,11 @@ import ReferenciaSocialDatos from './ReferenciaSocialDatos.js';
 import AlmuerzoRegistro from './AlmuerzoRegistro.js';
 import SalidaEntradaRegistro from './SalidaEntradaRegistro.js';
 import TicketTransporteRegistro from './TicketTransporteRegistro.js';
+import Proveedor from './Proveedor.js';
+import InventarioAlmacenProducto from './InventarioAlmacenProducto.js';
+import InventarioAlmacenLote from './InventarioAlmacenLote.js';
+import IngresoAlmacen from './IngresoAlmacen.js';
+import DetalleIngresoAlmacen from './DetalleIngresoAlmacen.js';
 
 TipoDocumento.hasMany(Documento, {
   foreignKey: 'tipos_documentos_id',
@@ -104,6 +109,51 @@ TicketTransporteRegistro.belongsTo(Documento, {
   as: 'documento'
 });
 
+InventarioAlmacenProducto.hasMany(InventarioAlmacenLote, {
+  foreignKey: 'producto_id',
+  as: 'lotes'
+});
+
+InventarioAlmacenLote.belongsTo(InventarioAlmacenProducto, {
+  foreignKey: 'producto_id',
+  as: 'producto'
+});
+
+Proveedor.hasMany(IngresoAlmacen, {
+  foreignKey: 'proveedor_id',
+  as: 'ingresos'
+});
+
+IngresoAlmacen.belongsTo(Proveedor, {
+  foreignKey: 'proveedor_id',
+  as: 'proveedor'
+});
+
+IngresoAlmacen.belongsTo(Usuario, {
+  foreignKey: 'usuario_recibe',
+  as: 'recibidoPor'
+});
+
+IngresoAlmacen.hasMany(DetalleIngresoAlmacen, {
+  foreignKey: 'ingreso_almacen_id',
+  as: 'detalles'
+});
+
+DetalleIngresoAlmacen.belongsTo(IngresoAlmacen, {
+  foreignKey: 'ingreso_almacen_id',
+  as: 'ingreso'
+});
+
+InventarioAlmacenLote.hasMany(DetalleIngresoAlmacen, {
+  foreignKey: 'inventario_almacen_lote_id',
+  as: 'detallesIngreso'
+});
+
+DetalleIngresoAlmacen.belongsTo(InventarioAlmacenLote, {
+  foreignKey: 'inventario_almacen_lote_id',
+  as: 'lote'
+});
+
 export {
   sequelize,
   Usuario,
@@ -114,5 +164,10 @@ export {
   ReferenciaSocialDatos,
   AlmuerzoRegistro,
   SalidaEntradaRegistro,
-  TicketTransporteRegistro
+  TicketTransporteRegistro,
+  Proveedor,
+  InventarioAlmacenProducto,
+  InventarioAlmacenLote,
+  IngresoAlmacen,
+  DetalleIngresoAlmacen
 };

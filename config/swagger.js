@@ -33,6 +33,10 @@ const definicion = {
     {
       name: 'Documentos',
       description: 'Modulo documental: catalogo de tipos, carga, metadatos, busqueda y paginacion.'
+    },
+    {
+      name: 'Inventario',
+      description: 'Modulo alimentario: proveedores, productos y lotes del almacen. Solo administradores.'
     }
   ],
   components: {
@@ -204,6 +208,458 @@ const definicion = {
             maxLength: 50
           }
         }
+      },
+      Proveedor: {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          razon_proveedor: {
+            type: 'string',
+            maxLength: 150
+          },
+          ci_nit_proveedor: {
+            type: 'string',
+            maxLength: 20,
+            description: 'Unico.'
+          },
+          telefono: {
+            type: 'string',
+            maxLength: 20
+          },
+          activo: {
+            type: 'boolean'
+          }
+        }
+      },
+      ProveedorCrear: {
+        type: 'object',
+        required: ['razon_proveedor', 'ci_nit_proveedor', 'telefono'],
+        properties: {
+          razon_proveedor: {
+            type: 'string',
+            maxLength: 150
+          },
+          ci_nit_proveedor: {
+            type: 'string',
+            maxLength: 20,
+            description: 'Unico.'
+          },
+          telefono: {
+            type: 'string',
+            maxLength: 20
+          }
+        }
+      },
+      ProveedorEstado: {
+        type: 'object',
+        required: ['activo'],
+        properties: {
+          activo: {
+            type: 'boolean',
+            example: false
+          }
+        }
+      },
+      ProductoInventario: {
+        type: 'object',
+        description: 'Presentacion de un producto del almacen, con su stock calculado desde los lotes.',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          codigo: {
+            type: 'string',
+            maxLength: 10
+          },
+          nombre: {
+            type: 'string',
+            maxLength: 150
+          },
+          tipo_envase: {
+            type: 'string',
+            maxLength: 30,
+            example: 'quintal'
+          },
+          unidad_medida: {
+            type: 'string',
+            maxLength: 20,
+            description: 'Unidad base en la que se guardan las cantidades.',
+            example: 'kg'
+          },
+          contenido_neto_referencia: {
+            type: 'number',
+            description: 'Unidades base que trae una presentacion.',
+            example: 46
+          },
+          precio_referencia_usd: {
+            type: 'number',
+            description: 'Precio de referencia por presentacion, en USD.',
+            example: 55
+          },
+          stock_base: {
+            type: 'number',
+            description: 'Suma de cantidad_actual de sus lotes, en unidad base.',
+            example: 92
+          },
+          stock_presentaciones: {
+            type: 'number',
+            description: 'stock_base dividido por el contenido neto.',
+            example: 2
+          }
+        }
+      },
+      ProductoInventarioCrear: {
+        type: 'object',
+        required: ['codigo', 'nombre', 'tipo_envase', 'unidad_medida', 'contenido_neto_referencia', 'precio_referencia_usd'],
+        properties: {
+          codigo: {
+            type: 'string',
+            maxLength: 10,
+            description: 'Unico. Se normaliza a mayusculas.',
+            example: 'ARR-Q'
+          },
+          nombre: {
+            type: 'string',
+            maxLength: 150,
+            example: 'Arroz por quintal'
+          },
+          tipo_envase: {
+            type: 'string',
+            maxLength: 30,
+            example: 'quintal'
+          },
+          unidad_medida: {
+            type: 'string',
+            maxLength: 20,
+            example: 'kg'
+          },
+          contenido_neto_referencia: {
+            type: 'number',
+            exclusiveMinimum: 0,
+            example: 46
+          },
+          precio_referencia_usd: {
+            type: 'number',
+            exclusiveMinimum: 0,
+            example: 55
+          }
+        }
+      },
+      LoteInventario: {
+        type: 'object',
+        description: 'Existencias de un producto con una fecha de vencimiento. Cantidades en unidad base.',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          producto_id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          nombre: {
+            type: 'string'
+          },
+          cantidad_actual: {
+            type: 'number'
+          },
+          cantidad_inicial: {
+            type: 'number',
+            description: 'Cantidad con la que nacio el lote; no se modifica despues.'
+          },
+          unidad_medida: {
+            type: 'string'
+          },
+          precio_unitario_usd: {
+            type: 'number',
+            nullable: true,
+            description: 'Precio por presentacion, en USD.'
+          },
+          notas: {
+            type: 'string',
+            nullable: true
+          },
+          fecha_expiracion: {
+            type: 'string',
+            format: 'date-time'
+          },
+          fecha_inventario_inicial: {
+            type: 'string',
+            format: 'date-time'
+          }
+        }
+      },
+      IngresoAlmacenItemCrear: {
+        type: 'object',
+        required: ['producto_id', 'cantidad_presentaciones', 'fecha_expiracion'],
+        properties: {
+          producto_id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          cantidad_presentaciones: {
+            type: 'number',
+            exclusiveMinimum: 0,
+            description: 'Cantidad en presentaciones (ej. 3 quintales). Se guarda en unidad base.',
+            example: 2
+          },
+          precio_unitario_usd: {
+            type: 'number',
+            exclusiveMinimum: 0,
+            description: 'Precio por presentacion en USD. Si se omite: el del lote existente o el de referencia del producto.',
+            example: 55
+          },
+          precio_unitario_bs: {
+            type: 'number',
+            exclusiveMinimum: 0,
+            description: 'Precio por presentacion en bolivianos, tal como figura en la factura (opcional).',
+            example: 383
+          },
+          fecha_expiracion: {
+            type: 'string',
+            format: 'date',
+            example: '2027-03-31'
+          },
+          inventario_almacen_lote_id: {
+            type: 'string',
+            format: 'uuid',
+            nullable: true,
+            description: 'Si se indica, suma a ese lote (mismo producto y misma fecha de vencimiento). Si se omite, se crea un lote nuevo.'
+          },
+          notas: {
+            type: 'string',
+            maxLength: 255,
+            nullable: true,
+            description: 'Notas del lote nuevo.'
+          }
+        }
+      },
+      IngresoAlmacenCrear: {
+        type: 'object',
+        required: ['tipo_ingreso', 'tipo_cambio_bs_usd', 'detalles'],
+        properties: {
+          tipo_ingreso: {
+            type: 'string',
+            enum: ['compra', 'donacion', 'traspaso', 'ajuste'],
+            description: 'La compra requiere proveedor. El conteo inicial se carga como ajuste.'
+          },
+          proveedor_id: {
+            type: 'string',
+            format: 'uuid',
+            nullable: true,
+            description: 'Debe existir y estar activo.'
+          },
+          fecha: {
+            type: 'string',
+            format: 'date-time',
+            nullable: true,
+            description: 'Por defecto, ahora. Permite registrar ingresos con fecha pasada (ej. el conteo del 2026-09-16).'
+          },
+          tipo_cambio_bs_usd: {
+            type: 'number',
+            exclusiveMinimum: 0,
+            example: 6.96
+          },
+          moneda_compra: {
+            type: 'string',
+            enum: ['BOB', 'USD'],
+            default: 'BOB'
+          },
+          monto_total_bs: {
+            type: 'number',
+            nullable: true,
+            description: 'Importe real pagado en bolivianos (opcional).'
+          },
+          nro_cia: {
+            type: 'integer',
+            nullable: true,
+            description: 'Numero del formulario CIA en papel (opcional).'
+          },
+          nro_documento_respaldo: {
+            type: 'string',
+            maxLength: 30,
+            nullable: true,
+            description: 'Numero de factura, si existe.'
+          },
+          motivo: {
+            type: 'string',
+            maxLength: 200,
+            nullable: true,
+            example: 'Conteo inicial 2026-09-16'
+          },
+          observaciones: {
+            type: 'string',
+            maxLength: 255,
+            nullable: true
+          },
+          detalles: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 100,
+            items: {
+              $ref: '#/components/schemas/IngresoAlmacenItemCrear'
+            }
+          }
+        }
+      },
+      DetalleIngreso: {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          producto: {
+            type: 'object',
+            nullable: true,
+            properties: {
+              id: {
+                type: 'string',
+                format: 'uuid'
+              },
+              codigo: {
+                type: 'string'
+              },
+              nombre: {
+                type: 'string'
+              },
+              unidad_medida: {
+                type: 'string'
+              },
+              contenido_neto_referencia: {
+                type: 'number'
+              }
+            }
+          },
+          lote_id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          cantidad_base: {
+            type: 'number',
+            description: 'Cantidad ingresada en unidad base.'
+          },
+          cantidad_presentaciones: {
+            type: 'number',
+            nullable: true
+          },
+          precio_unitario_usd: {
+            type: 'number'
+          },
+          precio_unitario_bs: {
+            type: 'number',
+            nullable: true
+          },
+          fecha_expiracion: {
+            type: 'string',
+            format: 'date'
+          }
+        }
+      },
+      IngresoAlmacen: {
+        type: 'object',
+        description: 'Cabecera de un ingreso, tal como aparece en los listados.',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          tipo_ingreso: {
+            type: 'string',
+            enum: ['compra', 'donacion', 'traspaso', 'ajuste']
+          },
+          fecha: {
+            type: 'string',
+            format: 'date-time'
+          },
+          nro_cia: {
+            type: 'integer',
+            nullable: true
+          },
+          nro_documento_respaldo: {
+            type: 'string',
+            nullable: true
+          },
+          tipo_cambio_bs_usd: {
+            type: 'number'
+          },
+          moneda_compra: {
+            type: 'string',
+            enum: ['BOB', 'USD']
+          },
+          monto_total_bs: {
+            type: 'number',
+            nullable: true
+          },
+          motivo: {
+            type: 'string',
+            nullable: true
+          },
+          observaciones: {
+            type: 'string',
+            nullable: true
+          },
+          proveedor: {
+            type: 'object',
+            nullable: true,
+            properties: {
+              id: {
+                type: 'string',
+                format: 'uuid'
+              },
+              razon_proveedor: {
+                type: 'string'
+              },
+              ci_nit_proveedor: {
+                type: 'string'
+              }
+            }
+          },
+          items: {
+            type: 'integer',
+            description: 'Cantidad de lineas de detalle (solo en el listado).'
+          }
+        }
+      },
+      IngresoAlmacenDetalle: {
+        type: 'object',
+        description: 'Ingreso con quien lo recibio y sus detalles.',
+        allOf: [
+          {
+            $ref: '#/components/schemas/IngresoAlmacen'
+          },
+          {
+            type: 'object',
+            properties: {
+              recibido_por: {
+                type: 'object',
+                nullable: true,
+                properties: {
+                  id: {
+                    type: 'string',
+                    format: 'uuid'
+                  },
+                  nombre: {
+                    type: 'string'
+                  },
+                  apellido: {
+                    type: 'string'
+                  }
+                }
+              },
+              detalles: {
+                type: 'array',
+                items: {
+                  $ref: '#/components/schemas/DetalleIngreso'
+                }
+              }
+            }
+          }
+        ]
       },
       DocumentoListado: {
         type: 'object',

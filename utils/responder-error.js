@@ -4,6 +4,13 @@ const ERRORES_DE_VALIDACION = [
 ];
 
 export const responderError = (res, error) => {
+  if (error.name === 'ErrorNegocio') {
+    return res.status(error.estado).json({
+      ok: false,
+      msg: error.message
+    });
+  }
+
   if (ERRORES_DE_VALIDACION.includes(error.name)) {
     return res.status(400).json({
       ok: false,

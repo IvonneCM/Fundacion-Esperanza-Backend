@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { body, param, query } from 'express-validator';
 import {
   getProductos,
+  getProductosPorAgotarse,
   getProducto,
   crearProducto,
   actualizarProducto
@@ -208,6 +209,79 @@ router.post('/', validarDatosProducto, validarCampos, crearProducto);
 
 /**
  * @openapi
+ * /api/productos/por-agotarse:
+ *   get:
+ *     tags: [Inventario]
+ *     summary: Alerta de productos por agotarse
+ *     description: >
+ *       Solo administradores. Productos cuyo stock disponible es menor o igual al `umbral`
+ *       (en unidad base; por defecto 0, es decir, agotados). El stock disponible no cuenta
+ *       los lotes vencidos; `stock_base` si los cuenta. Incluye los productos sin lotes.
+ *       Ordenados del que menos tiene al que mas. No hay un minimo por producto: el umbral
+ *       es el mismo para todos.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: umbral
+ *         schema:
+ *           type: number
+ *           default: 0
+ *           minimum: 0
+ *       - in: query
+ *         name: pagina
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limite
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 100
+ *     responses:
+ *       200:
+ *         description: Productos con poco o ningun stock disponible.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                 umbral:
+ *                   type: number
+ *                 total:
+ *                   type: integer
+ *                 pagina:
+ *                   type: integer
+ *                 limite:
+ *                   type: integer
+ *                 productos:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/ProductoInventario'
+ *       400:
+ *         description: Parametros invalidos.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorValidacion'
+ *       401:
+ *         description: Sin token o token invalido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: El rol del usuario no es admin.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  * /api/productos/{id}:
  *   get:
  *     tags: [Inventario]
@@ -333,6 +407,20 @@ router.post('/', validarDatosProducto, validarCampos, crearProducto);
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
+router.get(
+  '/por-agotarse',
+  [
+    query('umbral')
+      .optional()
+      .isFloat({ min: 0, max: 99999999.99 })
+      .withMessage('El umbral debe ser un numero mayor o igual a 0')
+      .toFloat(),
+    ...validarPaginacion
+  ],
+  validarCampos,
+  getProductosPorAgotarse
+);
+
 router.get('/:id', validarId, validarCampos, getProducto);
 
 router.put('/:id', validarId, validarDatosProducto, validarCampos, actualizarProducto);

@@ -11,10 +11,8 @@ import {
 import { ErrorNegocio } from '../utils/error-negocio.js';
 import { inicioDelDia, finDelDia, fechaLocal } from '../utils/fechas-bolivia.js';
 import { ingresoPublico, redondear } from '../utils/inventario-publico.js';
+import { CANTIDAD_MAXIMA } from '../utils/inventario-reglas.js';
 import { responderError } from '../utils/responder-error.js';
-
-// Limite de numeric(10,2) en cantidad_actual / cantidad_inicial / cantidad_ingresada.
-const CANTIDAD_MAXIMA = 99999999.99;
 
 const ITEMS_DEL_INGRESO = sequelize.literal(`(
   SELECT COUNT(*)

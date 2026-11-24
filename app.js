@@ -9,6 +9,8 @@ import documentosRouter from './routes/documentos.js';
 import proveedoresRouter from './routes/proveedores.js';
 import productosRouter from './routes/productos.js';
 import ingresosRouter from './routes/ingresos.js';
+import salidasRouter from './routes/salidas.js';
+import lotesRouter from './routes/lotes.js';
 import swaggerDocument from './config/swagger.js';
 
 dotenv.config();
@@ -27,6 +29,8 @@ app.use('/api/documentos', documentosRouter);
 app.use('/api/proveedores', proveedoresRouter);
 app.use('/api/productos', productosRouter);
 app.use('/api/ingresos', ingresosRouter);
+app.use('/api/salidas', salidasRouter);
+app.use('/api/lotes', lotesRouter);
 
 // Documentacion de la API (NFR-04): Swagger UI en /api-docs, spec en /api/docs/swagger.json
 app.get('/api/docs/swagger.json', (req, res) => {

@@ -13,6 +13,8 @@ import InventarioAlmacenProducto from './InventarioAlmacenProducto.js';
 import InventarioAlmacenLote from './InventarioAlmacenLote.js';
 import IngresoAlmacen from './IngresoAlmacen.js';
 import DetalleIngresoAlmacen from './DetalleIngresoAlmacen.js';
+import SalidaAlmacen from './SalidaAlmacen.js';
+import DetalleSalidaAlmacen from './DetalleSalidaAlmacen.js';
 
 TipoDocumento.hasMany(Documento, {
   foreignKey: 'tipos_documentos_id',
@@ -154,6 +156,31 @@ DetalleIngresoAlmacen.belongsTo(InventarioAlmacenLote, {
   as: 'lote'
 });
 
+SalidaAlmacen.belongsTo(Usuario, {
+  foreignKey: 'usuario_id_despacha',
+  as: 'despachadoPor'
+});
+
+SalidaAlmacen.hasMany(DetalleSalidaAlmacen, {
+  foreignKey: 'salida_almacen_id',
+  as: 'detalles'
+});
+
+DetalleSalidaAlmacen.belongsTo(SalidaAlmacen, {
+  foreignKey: 'salida_almacen_id',
+  as: 'salida'
+});
+
+InventarioAlmacenLote.hasMany(DetalleSalidaAlmacen, {
+  foreignKey: 'inventario_almacen_lote_id',
+  as: 'detallesSalida'
+});
+
+DetalleSalidaAlmacen.belongsTo(InventarioAlmacenLote, {
+  foreignKey: 'inventario_almacen_lote_id',
+  as: 'lote'
+});
+
 export {
   sequelize,
   Usuario,
@@ -169,5 +196,7 @@ export {
   InventarioAlmacenProducto,
   InventarioAlmacenLote,
   IngresoAlmacen,
-  DetalleIngresoAlmacen
+  DetalleIngresoAlmacen,
+  SalidaAlmacen,
+  DetalleSalidaAlmacen
 };

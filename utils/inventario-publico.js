@@ -1,3 +1,5 @@
+import { fechaLocal, diasEntre } from './fechas-bolivia.js';
+
 // Postgres devuelve los numeric como texto; la API los entrega como numero.
 export const redondear = (valor, decimales = 2) => {
   const factor = 10 ** decimales;
@@ -27,8 +29,21 @@ export const productoPublico = (producto) => {
     contenido_neto_referencia: contenido,
     precio_referencia_usd: Number(producto.precio_referencia_usd),
     stock_base: stockBase,
-    stock_presentaciones: contenido > 0 ? redondear(stockBase / contenido) : null
+    stock_presentaciones: contenido > 0 ? redondear(stockBase / contenido) : null,
+    ...stockDisponible(producto)
   };
+};
+
+// Solo aparece cuando la consulta calcula `stock_disponible_base` (alerta por-agotarse):
+// el stock sin contar los lotes vencidos.
+const stockDisponible = (producto) => {
+  const disponible = producto.get('stock_disponible_base');
+
+  if (disponible === undefined || disponible === null) {
+    return {};
+  }
+
+  return { stock_disponible_base: Number(disponible) };
 };
 
 export const lotePublico = (lote) => {
@@ -42,7 +57,40 @@ export const lotePublico = (lote) => {
     precio_unitario_usd: aNumero(lote.precio_unitario_usd),
     notas: lote.notas,
     fecha_expiracion: lote.fecha_expiracion,
+    vence_el: fechaLocal(lote.fecha_expiracion),
     fecha_inventario_inicial: lote.fecha_inventario_inicial
+  };
+};
+
+// Lote con el producto al que pertenece y la cantidad tambien en presentaciones.
+export const loteConProductoPublico = (lote) => {
+  const producto = lote.producto;
+  const contenido = producto ? Number(producto.contenido_neto_referencia) : 0;
+  const cantidadActual = Number(lote.cantidad_actual);
+
+  return {
+    ...lotePublico(lote),
+    cantidad_presentaciones: contenido > 0 ? redondear(cantidadActual / contenido) : null,
+    producto: producto
+      ? {
+          id: producto.id,
+          codigo: producto.codigo,
+          nombre: producto.nombre,
+          unidad_medida: producto.unidad_medida,
+          contenido_neto_referencia: contenido
+        }
+      : null
+  };
+};
+
+// Para la alerta de vencimientos: dias_para_vencer es negativo si ya vencio.
+export const loteAlertaPublico = (lote, hoy) => {
+  const diasParaVencer = diasEntre(hoy, fechaLocal(lote.fecha_expiracion));
+
+  return {
+    ...loteConProductoPublico(lote),
+    dias_para_vencer: diasParaVencer,
+    vencido: diasParaVencer < 0
   };
 };
 
@@ -114,9 +162,68 @@ export const ingresoPublico = (ingreso) => {
   return publico;
 };
 
+export const detalleSalidaPublico = (detalle) => {
+  const lote = detalle.lote;
+  const producto = lote?.producto;
+  const cantidadBase = Number(detalle.cantidad_salida);
+  const contenido = producto ? Number(producto.contenido_neto_referencia) : 0;
+
+  return {
+    id: detalle.id,
+    producto: producto
+      ? {
+          id: producto.id,
+          codigo: producto.codigo,
+          nombre: producto.nombre,
+          unidad_medida: producto.unidad_medida,
+          contenido_neto_referencia: contenido
+        }
+      : null,
+    lote_id: detalle.inventario_almacen_lote_id,
+    fecha_expiracion: lote ? fechaLocal(lote.fecha_expiracion) : null,
+    cantidad_base: cantidadBase,
+    cantidad_presentaciones: contenido > 0 ? redondear(cantidadBase / contenido) : null
+  };
+};
+
+// `items` solo viene en los listados (conteo calculado); en el detalle se usa `detalles`.
+export const salidaPublico = (salida) => {
+  const publico = {
+    id: salida.id,
+    tipo_salida: salida.tipo_salida,
+    fecha: salida.fecha,
+    nro_csa: salida.nro_csa,
+    area_solicitante: salida.area_solicitante,
+    responsable: salida.responsable,
+    programa_poa: salida.programa_poa,
+    observaciones: salida.observaciones,
+    despachado_por: salida.despachadoPor
+      ? {
+          id: salida.despachadoPor.id,
+          nombre: salida.despachadoPor.nombre,
+          apellido: salida.despachadoPor.apellido
+        }
+      : null
+  };
+
+  const items = salida.get('items');
+
+  if (items !== undefined) {
+    publico.items = Number(items);
+  }
+
+  if (salida.detalles) {
+    publico.detalles = salida.detalles.map(detalleSalidaPublico);
+  }
+
+  return publico;
+};
+
 export default {
   productoPublico,
   lotePublico,
   detalleIngresoPublico,
-  ingresoPublico
+  ingresoPublico,
+  detalleSalidaPublico,
+  salidaPublico
 };

@@ -309,6 +309,11 @@ const definicion = {
             type: 'number',
             description: 'stock_base dividido por el contenido neto.',
             example: 2
+          },
+          stock_disponible_base: {
+            type: 'number',
+            description: 'Stock sin contar los lotes vencidos, en unidad base. Solo en GET /api/productos/por-agotarse.',
+            example: 46
           }
         }
       },
@@ -387,9 +392,91 @@ const definicion = {
             type: 'string',
             format: 'date-time'
           },
+          vence_el: {
+            type: 'string',
+            format: 'date',
+            description: 'Fecha de vencimiento en calendario de La Paz.',
+            example: '2027-03-31'
+          },
           fecha_inventario_inicial: {
             type: 'string',
             format: 'date-time'
+          },
+          cantidad_presentaciones: {
+            type: 'number',
+            nullable: true,
+            description: 'cantidad_actual en presentaciones. Solo en las consultas de lotes.'
+          },
+          producto: {
+            type: 'object',
+            nullable: true,
+            description: 'Producto del lote. Solo en las consultas de lotes.',
+            properties: {
+              id: {
+                type: 'string',
+                format: 'uuid'
+              },
+              codigo: {
+                type: 'string'
+              },
+              nombre: {
+                type: 'string'
+              },
+              unidad_medida: {
+                type: 'string'
+              },
+              contenido_neto_referencia: {
+                type: 'number'
+              }
+            }
+          }
+        }
+      },
+      LoteAlerta: {
+        type: 'object',
+        description: 'Lote de la alerta de vencimientos: todo lo de LoteInventario mas los dias que faltan.',
+        allOf: [
+          {
+            $ref: '#/components/schemas/LoteInventario'
+          },
+          {
+            type: 'object',
+            properties: {
+              dias_para_vencer: {
+                type: 'integer',
+                description: 'Negativo si ya vencio.',
+                example: 12
+              },
+              vencido: {
+                type: 'boolean'
+              }
+            }
+          }
+        ]
+      },
+      MovimientoLote: {
+        type: 'object',
+        description: 'Ingreso o salida (incluidos los ajustes) que tocaron un lote.',
+        properties: {
+          tipo: {
+            type: 'string',
+            enum: ['ingreso', 'salida']
+          },
+          subtipo: {
+            type: 'string',
+            description: 'tipo_ingreso (compra, donacion, traspaso, ajuste) o tipo_salida (consumo, ajuste).'
+          },
+          movimiento_id: {
+            type: 'string',
+            format: 'uuid',
+            description: 'Id del ingreso o de la salida; se consulta con GET /api/ingresos/{id} o /api/salidas/{id}.'
+          },
+          fecha: {
+            type: 'string',
+            format: 'date-time'
+          },
+          cantidad_base: {
+            type: 'number'
           }
         }
       },
@@ -660,6 +747,265 @@ const definicion = {
             }
           }
         ]
+      },
+      SalidaAlmacenItemCrear: {
+        type: 'object',
+        required: ['producto_id', 'cantidad_base'],
+        properties: {
+          producto_id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          cantidad_base: {
+            type: 'number',
+            exclusiveMinimum: 0,
+            description: 'Cantidad en unidad base del producto (ej. kg), no en presentaciones.',
+            example: 5
+          },
+          inventario_almacen_lote_id: {
+            type: 'string',
+            format: 'uuid',
+            nullable: true,
+            description: 'Opcional. Si se omite, se aplica FEFO. Si se indica, debe ser del mismo producto y no estar vencido.'
+          }
+        }
+      },
+      SalidaAlmacenCrear: {
+        type: 'object',
+        required: ['responsable', 'detalles'],
+        properties: {
+          responsable: {
+            type: 'string',
+            maxLength: 100,
+            description: 'Quien entrega los insumos del almacen.',
+            example: 'Maria Lopez'
+          },
+          nro_csa: {
+            type: 'string',
+            maxLength: 10,
+            nullable: true,
+            description: 'Numero del formulario CSA en papel (opcional).'
+          },
+          area_solicitante: {
+            type: 'string',
+            maxLength: 20,
+            nullable: true
+          },
+          programa_poa: {
+            type: 'string',
+            maxLength: 10,
+            nullable: true
+          },
+          fecha: {
+            type: 'string',
+            format: 'date-time',
+            nullable: true,
+            description: 'Por defecto, ahora.'
+          },
+          observaciones: {
+            type: 'string',
+            maxLength: 255,
+            nullable: true
+          },
+          detalles: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 100,
+            items: {
+              $ref: '#/components/schemas/SalidaAlmacenItemCrear'
+            }
+          }
+        }
+      },
+      DetalleSalida: {
+        type: 'object',
+        description: 'Una linea por lote: si un item sale de varios lotes (FEFO), aparecen varias lineas.',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          producto: {
+            type: 'object',
+            nullable: true,
+            properties: {
+              id: {
+                type: 'string',
+                format: 'uuid'
+              },
+              codigo: {
+                type: 'string'
+              },
+              nombre: {
+                type: 'string'
+              },
+              unidad_medida: {
+                type: 'string'
+              },
+              contenido_neto_referencia: {
+                type: 'number'
+              }
+            }
+          },
+          lote_id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          fecha_expiracion: {
+            type: 'string',
+            format: 'date',
+            nullable: true
+          },
+          cantidad_base: {
+            type: 'number'
+          },
+          cantidad_presentaciones: {
+            type: 'number',
+            nullable: true
+          }
+        }
+      },
+      SalidaAlmacen: {
+        type: 'object',
+        description: 'Cabecera de una salida, tal como aparece en los listados.',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          tipo_salida: {
+            type: 'string',
+            enum: ['consumo', 'ajuste']
+          },
+          fecha: {
+            type: 'string',
+            format: 'date-time'
+          },
+          nro_csa: {
+            type: 'string',
+            nullable: true
+          },
+          area_solicitante: {
+            type: 'string',
+            nullable: true
+          },
+          responsable: {
+            type: 'string'
+          },
+          programa_poa: {
+            type: 'string',
+            nullable: true
+          },
+          observaciones: {
+            type: 'string',
+            nullable: true
+          },
+          despachado_por: {
+            type: 'object',
+            nullable: true,
+            properties: {
+              id: {
+                type: 'string',
+                format: 'uuid'
+              },
+              nombre: {
+                type: 'string'
+              },
+              apellido: {
+                type: 'string'
+              }
+            }
+          },
+          items: {
+            type: 'integer',
+            description: 'Cantidad de lineas de detalle (solo en el listado).'
+          }
+        }
+      },
+      SalidaAlmacenDetalle: {
+        type: 'object',
+        description: 'Salida con sus detalles.',
+        allOf: [
+          {
+            $ref: '#/components/schemas/SalidaAlmacen'
+          },
+          {
+            type: 'object',
+            properties: {
+              detalles: {
+                type: 'array',
+                items: {
+                  $ref: '#/components/schemas/DetalleSalida'
+                }
+              }
+            }
+          }
+        ]
+      },
+      AjusteLoteCrear: {
+        type: 'object',
+        required: ['motivo'],
+        description: 'Indique cantidad_contada o cantidad_contada_presentaciones, solo una de las dos.',
+        properties: {
+          cantidad_contada: {
+            type: 'number',
+            minimum: 0,
+            description: 'Lo que hay fisicamente, en unidad base.',
+            example: 40
+          },
+          cantidad_contada_presentaciones: {
+            type: 'number',
+            minimum: 0,
+            description: 'Lo que hay fisicamente, en presentaciones.',
+            example: 2
+          },
+          motivo: {
+            type: 'string',
+            maxLength: 200,
+            example: 'Conteo manual de noviembre'
+          },
+          tipo_cambio_bs_usd: {
+            type: 'number',
+            exclusiveMinimum: 0,
+            description: 'Solo si la diferencia es positiva. Si se omite, se usa el del ingreso mas reciente.'
+          },
+          precio_unitario_usd: {
+            type: 'number',
+            exclusiveMinimum: 0,
+            description: 'Solo si la diferencia es positiva. Por presentacion. Si se omite, el del lote o el del producto.'
+          }
+        }
+      },
+      AjusteLoteResultado: {
+        type: 'object',
+        properties: {
+          movimiento: {
+            type: 'object',
+            properties: {
+              tipo: {
+                type: 'string',
+                enum: ['ingreso', 'salida']
+              },
+              id: {
+                type: 'string',
+                format: 'uuid'
+              }
+            }
+          },
+          cantidad_anterior: {
+            type: 'number'
+          },
+          cantidad_contada: {
+            type: 'number'
+          },
+          diferencia: {
+            type: 'number',
+            description: 'Positiva = sobraba (ingreso de ajuste). Negativa = faltaba (salida de ajuste).'
+          },
+          lote: {
+            $ref: '#/components/schemas/LoteInventario'
+          }
+        }
       },
       DocumentoListado: {
         type: 'object',

@@ -19,8 +19,26 @@ export const finDelDia = (fecha) => new Date(`${fecha}T23:59:59.999${DESFASE}`);
 // Instante -> 'YYYY-MM-DD' segun el calendario de La Paz.
 export const fechaLocal = (instante) => formatoFecha.format(new Date(instante));
 
+// 'YYYY-MM-DD' + n dias -> 'YYYY-MM-DD' (calendario puro, sin zonas horarias).
+export const sumarDias = (fecha, dias) => {
+  const [anio, mes, dia] = fecha.split('-').map(Number);
+  return new Date(Date.UTC(anio, mes - 1, dia + dias)).toISOString().slice(0, 10);
+};
+
+// Dias de calendario desde `desde` hasta `hasta` (negativo si `hasta` es anterior).
+export const diasEntre = (desde, hasta) => {
+  const aMilisegundos = (fecha) => {
+    const [anio, mes, dia] = fecha.split('-').map(Number);
+    return Date.UTC(anio, mes - 1, dia);
+  };
+
+  return Math.round((aMilisegundos(hasta) - aMilisegundos(desde)) / 86400000);
+};
+
 export default {
   inicioDelDia,
   finDelDia,
-  fechaLocal
+  fechaLocal,
+  sumarDias,
+  diasEntre
 };

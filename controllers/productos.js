@@ -4,6 +4,7 @@ import InventarioAlmacenProducto from '../models/InventarioAlmacenProducto.js';
 import InventarioAlmacenLote from '../models/InventarioAlmacenLote.js';
 import { responderError } from '../utils/responder-error.js';
 import { productoPublico, lotePublico } from '../utils/inventario-publico.js';
+import { inicioDelDia, fechaLocal } from '../utils/fechas-bolivia.js';
 
 const MENSAJE_NO_ENCONTRADO = 'Producto no encontrado';
 const MENSAJE_DUPLICADO = 'Ya existe un producto con ese codigo';
@@ -60,6 +61,59 @@ export const getProductos = async (req, res) => {
     return res.json({
       ok: true,
       msg: 'Productos obtenidos',
+      total: count,
+      pagina,
+      limite,
+      productos: rows.map(productoPublico)
+    });
+  } catch (error) {
+    responderError(res, error);
+  }
+};
+
+// Stock que se puede usar hoy: suma de los lotes que no estan vencidos. Se arma en cada
+// consulta porque depende de la fecha de hoy en La Paz.
+const stockDisponibleHoy = () => {
+  const desde = inicioDelDia(fechaLocal(new Date())).toISOString();
+
+  return sequelize.literal(`(
+    SELECT COALESCE(SUM(l.cantidad_actual), 0)
+    FROM inventario_almacen_lote AS l
+    WHERE l.producto_id = "InventarioAlmacenProducto"."id"
+      AND l.fecha_expiracion >= ${sequelize.escape(desde)}
+  )`);
+};
+
+// Alerta de stock bajo: productos cuyo stock disponible (sin lotes vencidos) es menor o
+// igual al umbral, en unidad base. Incluye los que no tienen lotes.
+export const getProductosPorAgotarse = async (req, res) => {
+  try {
+    const umbral = Number(req.query.umbral ?? 0);
+    const pagina = Number(req.query.pagina ?? 1);
+    const limite = Number(req.query.limite ?? 20);
+
+    const disponible = stockDisponibleHoy();
+
+    const { rows, count } = await InventarioAlmacenProducto.findAndCountAll({
+      attributes: {
+        include: [
+          [STOCK_BASE, 'stock_base'],
+          [disponible, 'stock_disponible_base']
+        ]
+      },
+      where: sequelize.where(disponible, { [Op.lte]: umbral }),
+      order: [
+        [disponible, 'ASC'],
+        ['nombre', 'ASC']
+      ],
+      offset: (pagina - 1) * limite,
+      limit: limite
+    });
+
+    return res.json({
+      ok: true,
+      msg: 'Productos por agotarse obtenidos',
+      umbral,
       total: count,
       pagina,
       limite,
@@ -192,6 +246,7 @@ export const actualizarProducto = async (req, res) => {
 
 export default {
   getProductos,
+  getProductosPorAgotarse,
   getProducto,
   crearProducto,
   actualizarProducto

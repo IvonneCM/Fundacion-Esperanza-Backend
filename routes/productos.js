@@ -52,7 +52,41 @@ const validarDatosProducto = [
   body('precio_referencia_usd')
     .isFloat({ gt: 0, max: 99999999 })
     .withMessage('El precio de referencia (USD) debe ser un numero mayor a 0')
-    .toFloat()
+    .toFloat(),
+  body('producto_base_id')
+    .optional({ nullable: true })
+    .isUUID()
+    .withMessage('El producto base debe ser un UUID valido'),
+  body('marca')
+    .optional({ nullable: true })
+    .isString()
+    .withMessage('La marca debe ser texto')
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('La marca no puede superar 100 caracteres'),
+  body('medida_casera_nombre')
+    .optional({ nullable: true })
+    .isString()
+    .withMessage('El nombre de la medida casera debe ser texto')
+    .trim()
+    .isLength({ max: 30 })
+    .withMessage('El nombre de la medida casera no puede superar 30 caracteres'),
+  body('medida_casera_cantidad')
+    .optional({ nullable: true })
+    .isFloat({ gt: 0, max: 999999 })
+    .withMessage('La cantidad de la medida casera debe ser un numero mayor a 0')
+    .toFloat(),
+  body()
+    .custom((cuerpo) => {
+      const tieneNombre = Boolean(String(cuerpo.medida_casera_nombre ?? '').trim());
+      const tieneCantidad = cuerpo.medida_casera_cantidad !== undefined && cuerpo.medida_casera_cantidad !== null;
+
+      if (tieneNombre !== tieneCantidad) {
+        throw new Error('La medida casera lleva nombre y cantidad juntos, o ninguno');
+      }
+
+      return true;
+    })
 ];
 
 /**
@@ -73,12 +107,23 @@ const validarDatosProducto = [
  *         name: buscar
  *         schema:
  *           type: string
- *         description: Coincidencia parcial en nombre o codigo.
+ *         description: Coincidencia parcial en nombre, codigo o marca.
  *       - in: query
  *         name: tipo_envase
  *         schema:
  *           type: string
  *         description: Tipo de envase exacto (sin distinguir mayusculas).
+ *       - in: query
+ *         name: solo_bases
+ *         schema:
+ *           type: boolean
+ *         description: true = solo productos sin base (los insumos, para el selector de recetas).
+ *       - in: query
+ *         name: producto_base_id
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Solo las presentaciones de esa base.
  *       - in: query
  *         name: pagina
  *         schema:
@@ -138,6 +183,9 @@ const validarDatosProducto = [
  *       Solo administradores. El `codigo` es unico y se normaliza a mayusculas. Las cantidades
  *       del inventario se guardan en `unidad_medida` (unidad base); `contenido_neto_referencia`
  *       es cuantas unidades base trae una presentacion; el precio es por presentacion.
+ *       Con `producto_base_id` el producto es presentacion de ese insumo: la base debe existir,
+ *       no ser a su vez presentacion (400/409) y tener la misma `unidad_medida`. La medida casera
+ *       (`medida_casera_nombre` + `medida_casera_cantidad`, ej. jarra 0.51 kg) solo va en una base.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -199,6 +247,15 @@ router.get(
       .trim()
       .isLength({ max: 30 })
       .withMessage('El tipo de envase no puede superar 30 caracteres'),
+    query('solo_bases')
+      .optional()
+      .isBoolean()
+      .withMessage('solo_bases debe ser true o false')
+      .toBoolean(),
+    query('producto_base_id')
+      .optional()
+      .isUUID()
+      .withMessage('producto_base_id debe ser un UUID valido'),
     ...validarPaginacion
   ],
   validarCampos,
@@ -286,7 +343,12 @@ router.post('/', validarDatosProducto, validarCampos, crearProducto);
  *   get:
  *     tags: [Inventario]
  *     summary: Obtener un producto con su stock y sus lotes
- *     description: Solo administradores. Los lotes devueltos son los que tienen existencias, ordenados por fecha de vencimiento (FEFO).
+ *     description: >
+ *       Solo administradores. Los lotes devueltos son los que tienen existencias, ordenados por
+ *       fecha de vencimiento (FEFO). Si el producto no tiene base (es un insumo), agrega
+ *       `presentaciones` (con su stock) e `insumo`: stock total y disponible de todas ellas y el
+ *       precio vigente por unidad base (lote que vence primero; si no hay stock, el de referencia).
+ *       Si es presentacion de otro, agrega `base`.
  *     security:
  *       - bearerAuth: []
  *     parameters:

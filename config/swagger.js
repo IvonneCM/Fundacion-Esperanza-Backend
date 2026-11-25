@@ -37,6 +37,10 @@ const definicion = {
     {
       name: 'Inventario',
       description: 'Modulo alimentario: proveedores, productos y lotes del almacen. Solo administradores.'
+    },
+    {
+      name: 'Recetas',
+      description: 'Modulo alimentario: recetas por persona, con disponibilidad y precio de sus insumos. Solo administradores.'
     }
   ],
   components: {
@@ -300,6 +304,29 @@ const definicion = {
             description: 'Precio de referencia por presentacion, en USD.',
             example: 55
           },
+          producto_base_id: {
+            type: 'string',
+            format: 'uuid',
+            nullable: true,
+            description: 'Insumo del que es presentacion. null = es un insumo por si mismo (base o producto suelto).'
+          },
+          marca: {
+            type: 'string',
+            nullable: true,
+            maxLength: 100
+          },
+          medida_casera_nombre: {
+            type: 'string',
+            nullable: true,
+            description: 'Solo en bases. Ej. jarra.',
+            example: 'jarra'
+          },
+          medida_casera_cantidad: {
+            type: 'number',
+            nullable: true,
+            description: 'Cuanto es una medida casera, en unidad base.',
+            example: 0.51
+          },
           stock_base: {
             type: 'number',
             description: 'Suma de cantidad_actual de sus lotes, en unidad base.',
@@ -351,6 +378,255 @@ const definicion = {
             type: 'number',
             exclusiveMinimum: 0,
             example: 55
+          },
+          producto_base_id: {
+            type: 'string',
+            format: 'uuid',
+            nullable: true,
+            description: 'Hace de este producto una presentacion de esa base. Misma unidad de medida; un solo nivel.'
+          },
+          marca: {
+            type: 'string',
+            nullable: true,
+            maxLength: 100
+          },
+          medida_casera_nombre: {
+            type: 'string',
+            nullable: true,
+            maxLength: 30,
+            description: 'Solo en bases; va junto con medida_casera_cantidad.',
+            example: 'jarra'
+          },
+          medida_casera_cantidad: {
+            type: 'number',
+            nullable: true,
+            exclusiveMinimum: 0,
+            example: 0.51
+          }
+        }
+      },
+      RecetaResumen: {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          nombre: {
+            type: 'string'
+          },
+          descripcion: {
+            type: 'string',
+            nullable: true
+          },
+          total_insumos: {
+            type: 'integer'
+          }
+        }
+      },
+      Receta: {
+        type: 'object',
+        description: 'Receta para una persona. Las cantidades estan en la unidad base de cada insumo.',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          },
+          nombre: {
+            type: 'string'
+          },
+          descripcion: {
+            type: 'string',
+            nullable: true
+          },
+          costo_por_persona_usd: {
+            type: 'number',
+            description: 'Suma de cantidad por persona x precio vigente por unidad base.'
+          },
+          insumos: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                producto_id: {
+                  type: 'string',
+                  format: 'uuid'
+                },
+                codigo: {
+                  type: 'string'
+                },
+                nombre: {
+                  type: 'string'
+                },
+                unidad_medida: {
+                  type: 'string'
+                },
+                cantidad_requerida: {
+                  type: 'number',
+                  description: 'Por persona, en unidad base.',
+                  example: 0.16
+                },
+                medida_casera_nombre: {
+                  type: 'string',
+                  nullable: true
+                },
+                medida_casera_cantidad: {
+                  type: 'number',
+                  nullable: true
+                },
+                stock_disponible_base: {
+                  type: 'number',
+                  description: 'Base mas presentaciones, sin lotes vencidos.'
+                },
+                precio_base_usd: {
+                  type: 'number',
+                  description: 'USD por unidad base.'
+                },
+                precio_fuente: {
+                  type: 'string',
+                  enum: ['lote', 'referencia'],
+                  description: 'lote = el que vence primero; referencia = no hay stock.'
+                },
+                costo_por_persona_usd: {
+                  type: 'number'
+                }
+              }
+            }
+          }
+        }
+      },
+      RecetaCrear: {
+        type: 'object',
+        required: ['nombre', 'insumos'],
+        properties: {
+          nombre: {
+            type: 'string',
+            maxLength: 150,
+            example: 'Arroz con pollo'
+          },
+          descripcion: {
+            type: 'string',
+            nullable: true
+          },
+          insumos: {
+            type: 'array',
+            minItems: 1,
+            items: {
+              type: 'object',
+              required: ['producto_id', 'cantidad_requerida'],
+              properties: {
+                producto_id: {
+                  type: 'string',
+                  format: 'uuid',
+                  description: 'Base del insumo (nunca una presentacion).'
+                },
+                cantidad_requerida: {
+                  type: 'number',
+                  exclusiveMinimum: 0,
+                  description: 'Por persona, en la unidad base del insumo (hasta 4 decimales).',
+                  example: 0.08
+                }
+              }
+            }
+          }
+        }
+      },
+      RecetaEditar: {
+        type: 'object',
+        description: 'Al menos un campo. `insumos` reemplaza la lista completa.',
+        properties: {
+          nombre: {
+            type: 'string',
+            maxLength: 150
+          },
+          descripcion: {
+            type: 'string',
+            nullable: true
+          },
+          insumos: {
+            type: 'array',
+            minItems: 1,
+            items: {
+              type: 'object',
+              required: ['producto_id', 'cantidad_requerida'],
+              properties: {
+                producto_id: {
+                  type: 'string',
+                  format: 'uuid'
+                },
+                cantidad_requerida: {
+                  type: 'number',
+                  exclusiveMinimum: 0
+                }
+              }
+            }
+          }
+        }
+      },
+      RecetaDisponibilidad: {
+        type: 'object',
+        properties: {
+          ok: {
+            type: 'boolean',
+            example: true
+          },
+          msg: {
+            type: 'string'
+          },
+          receta: {
+            type: 'object',
+            properties: {
+              id: {
+                type: 'string',
+                format: 'uuid'
+              },
+              nombre: {
+                type: 'string'
+              }
+            }
+          },
+          personas: {
+            type: 'integer'
+          },
+          alcanza: {
+            type: 'boolean',
+            description: 'true si todos los insumos alcanzan.'
+          },
+          costo_estimado_usd: {
+            type: 'number'
+          },
+          insumos: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                producto_id: {
+                  type: 'string',
+                  format: 'uuid'
+                },
+                codigo: {
+                  type: 'string'
+                },
+                nombre: {
+                  type: 'string'
+                },
+                unidad_medida: {
+                  type: 'string'
+                },
+                requerido_base: {
+                  type: 'number'
+                },
+                disponible_base: {
+                  type: 'number'
+                },
+                faltante_base: {
+                  type: 'number'
+                },
+                alcanza: {
+                  type: 'boolean'
+                }
+              }
+            }
           }
         }
       },

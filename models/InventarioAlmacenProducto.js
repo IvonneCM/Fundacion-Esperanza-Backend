@@ -33,6 +33,22 @@ const InventarioAlmacenProducto = sequelize.define(
     precio_referencia_usd: {
       type: DataTypes.DECIMAL(12, 4),
       allowNull: false
+    },
+    producto_base_id: {
+      type: DataTypes.UUID,
+      allowNull: true
+    },
+    marca: {
+      type: DataTypes.STRING(100),
+      allowNull: true
+    },
+    medida_casera_nombre: {
+      type: DataTypes.STRING(30),
+      allowNull: true
+    },
+    medida_casera_cantidad: {
+      type: DataTypes.DECIMAL(10, 4),
+      allowNull: true
     }
   },
   {

@@ -28,6 +28,10 @@ export const productoPublico = (producto) => {
     unidad_medida: producto.unidad_medida,
     contenido_neto_referencia: contenido,
     precio_referencia_usd: Number(producto.precio_referencia_usd),
+    producto_base_id: producto.producto_base_id ?? null,
+    marca: producto.marca ?? null,
+    medida_casera_nombre: producto.medida_casera_nombre ?? null,
+    medida_casera_cantidad: aNumero(producto.medida_casera_cantidad),
     stock_base: stockBase,
     stock_presentaciones: contenido > 0 ? redondear(stockBase / contenido) : null,
     ...stockDisponible(producto)

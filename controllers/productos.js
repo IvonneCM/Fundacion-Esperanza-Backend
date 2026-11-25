@@ -2,6 +2,9 @@ import { Op } from 'sequelize';
 import { sequelize } from '../config/database.js';
 import InventarioAlmacenProducto from '../models/InventarioAlmacenProducto.js';
 import InventarioAlmacenLote from '../models/InventarioAlmacenLote.js';
+import RecetaInsumo from '../models/RecetaInsumo.js';
+import { ErrorNegocio } from '../utils/error-negocio.js';
+import { resumirInsumos } from '../utils/insumos.js';
 import { responderError } from '../utils/responder-error.js';
 import { productoPublico, lotePublico } from '../utils/inventario-publico.js';
 import { inicioDelDia, fechaLocal } from '../utils/fechas-bolivia.js';
@@ -23,6 +26,79 @@ const ATRIBUTOS_CON_STOCK = {
 
 const normalizarCodigo = (codigo) => String(codigo).trim().toUpperCase();
 
+const textoOpcional = (valor) => {
+  if (valor === undefined || valor === null) {
+    return null;
+  }
+
+  const texto = String(valor).trim();
+
+  return texto === '' ? null : texto;
+};
+
+// Campos de agrupacion (design.md 11.1). PUT reemplaza todo: lo que no llega queda en null.
+const datosDeAgrupacion = (body) => {
+  return {
+    producto_base_id: body.producto_base_id ?? null,
+    marca: textoOpcional(body.marca),
+    medida_casera_nombre: textoOpcional(body.medida_casera_nombre),
+    medida_casera_cantidad: body.medida_casera_cantidad ?? null
+  };
+};
+
+// Reglas de producto base (design.md 11.1). Lanza ErrorNegocio; `producto` es el que se edita.
+const validarAgrupacion = async (datos, unidadMedida, producto) => {
+  if (producto) {
+    const presentaciones = await InventarioAlmacenProducto.count({
+      where: { producto_base_id: producto.id }
+    });
+
+    if (presentaciones > 0 && unidadMedida !== producto.unidad_medida) {
+      throw new ErrorNegocio(409, 'No se puede cambiar la unidad de un producto que es base de otras presentaciones');
+    }
+
+    if (datos.producto_base_id && presentaciones > 0) {
+      throw new ErrorNegocio(409, 'Este producto es base de otras presentaciones y no puede tener a su vez una base');
+    }
+
+    if (datos.producto_base_id) {
+      const recetas = await RecetaInsumo.count({
+        where: { insumo_id: producto.id }
+      });
+
+      if (recetas > 0) {
+        throw new ErrorNegocio(409, 'Este producto se usa como insumo en recetas y no puede pasar a ser presentacion de otro');
+      }
+    }
+  }
+
+  if (!datos.producto_base_id) {
+    return;
+  }
+
+  if (producto && datos.producto_base_id === producto.id) {
+    throw new ErrorNegocio(400, 'Un producto no puede ser su propia base');
+  }
+
+  if (datos.medida_casera_nombre) {
+    throw new ErrorNegocio(400, 'La medida casera solo va en un producto base');
+  }
+
+  const base = await InventarioAlmacenProducto.findByPk(datos.producto_base_id);
+
+  if (!base) {
+    throw new ErrorNegocio(400, 'El producto base no existe');
+  }
+
+  if (base.producto_base_id) {
+    throw new ErrorNegocio(409, 'La base elegida es a su vez presentacion de otro producto; solo se permite un nivel');
+  }
+
+  if (base.unidad_medida !== unidadMedida) {
+    throw new ErrorNegocio(409, `La unidad de medida debe ser la de su base (${base.unidad_medida})`);
+  }
+};
+
 const buscarProductoConStock = (id) => {
   return InventarioAlmacenProducto.findByPk(id, {
     attributes: ATRIBUTOS_CON_STOCK
@@ -31,7 +107,12 @@ const buscarProductoConStock = (id) => {
 
 export const getProductos = async (req, res) => {
   try {
-    const { buscar, tipo_envase: tipoEnvase } = req.query;
+    const {
+      buscar,
+      tipo_envase: tipoEnvase,
+      solo_bases: soloBases,
+      producto_base_id: productoBaseId
+    } = req.query;
     const pagina = Number(req.query.pagina ?? 1);
     const limite = Number(req.query.limite ?? 20);
 
@@ -41,12 +122,21 @@ export const getProductos = async (req, res) => {
       where.tipo_envase = { [Op.iLike]: tipoEnvase };
     }
 
+    if (soloBases) {
+      where.producto_base_id = null;
+    }
+
+    if (productoBaseId) {
+      where.producto_base_id = productoBaseId;
+    }
+
     if (buscar) {
       const termino = `%${buscar}%`;
 
       where[Op.or] = [
         { nombre: { [Op.iLike]: termino } },
-        { codigo: { [Op.iLike]: termino } }
+        { codigo: { [Op.iLike]: termino } },
+        { marca: { [Op.iLike]: termino } }
       ];
     }
 
@@ -141,12 +231,33 @@ export const getProducto = async (req, res) => {
       order: [['fecha_expiracion', 'ASC']]
     });
 
-    return res.json({
+    const respuesta = {
       ok: true,
       msg: 'Producto obtenido',
       producto: productoPublico(producto),
       lotes: lotes.map(lotePublico)
-    });
+    };
+
+    if (producto.producto_base_id) {
+      const base = await InventarioAlmacenProducto.findByPk(producto.producto_base_id);
+
+      respuesta.base = base
+        ? { id: base.id, codigo: base.codigo, nombre: base.nombre, unidad_medida: base.unidad_medida }
+        : null;
+    } else {
+      // Es insumo por si mismo: se suman sus presentaciones (design.md 11.4).
+      const presentaciones = await InventarioAlmacenProducto.findAll({
+        attributes: ATRIBUTOS_CON_STOCK,
+        where: { producto_base_id: producto.id },
+        order: [['nombre', 'ASC']]
+      });
+      const resumen = await resumirInsumos([producto]);
+
+      respuesta.presentaciones = presentaciones.map(productoPublico);
+      respuesta.insumo = resumen.get(producto.id);
+    }
+
+    return res.json(respuesta);
   } catch (error) {
     responderError(res, error);
   }
@@ -164,13 +275,18 @@ export const crearProducto = async (req, res) => {
       return res.status(409).json({ ok: false, msg: MENSAJE_DUPLICADO });
     }
 
+    const agrupacion = datosDeAgrupacion(req.body);
+
+    await validarAgrupacion(agrupacion, req.body.unidad_medida, null);
+
     const creado = await InventarioAlmacenProducto.create({
       codigo,
       nombre: req.body.nombre,
       tipo_envase: req.body.tipo_envase,
       unidad_medida: req.body.unidad_medida,
       contenido_neto_referencia: req.body.contenido_neto_referencia,
-      precio_referencia_usd: req.body.precio_referencia_usd
+      precio_referencia_usd: req.body.precio_referencia_usd,
+      ...agrupacion
     });
 
     const producto = await buscarProductoConStock(creado.id);
@@ -224,12 +340,20 @@ export const actualizarProducto = async (req, res) => {
       }
     }
 
+    const agrupacion = datosDeAgrupacion(req.body);
+
+    await validarAgrupacion(agrupacion, req.body.unidad_medida, producto);
+
     producto.codigo = codigo;
     producto.nombre = req.body.nombre;
     producto.tipo_envase = req.body.tipo_envase;
     producto.unidad_medida = req.body.unidad_medida;
     producto.contenido_neto_referencia = req.body.contenido_neto_referencia;
     producto.precio_referencia_usd = req.body.precio_referencia_usd;
+    producto.producto_base_id = agrupacion.producto_base_id;
+    producto.marca = agrupacion.marca;
+    producto.medida_casera_nombre = agrupacion.medida_casera_nombre;
+    producto.medida_casera_cantidad = agrupacion.medida_casera_cantidad;
     await producto.save();
 
     const actualizado = await buscarProductoConStock(producto.id);

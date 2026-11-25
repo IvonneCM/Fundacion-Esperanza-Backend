@@ -15,6 +15,8 @@ import IngresoAlmacen from './IngresoAlmacen.js';
 import DetalleIngresoAlmacen from './DetalleIngresoAlmacen.js';
 import SalidaAlmacen from './SalidaAlmacen.js';
 import DetalleSalidaAlmacen from './DetalleSalidaAlmacen.js';
+import Receta from './Receta.js';
+import RecetaInsumo from './RecetaInsumo.js';
 
 TipoDocumento.hasMany(Documento, {
   foreignKey: 'tipos_documentos_id',
@@ -181,6 +183,31 @@ DetalleSalidaAlmacen.belongsTo(InventarioAlmacenLote, {
   as: 'lote'
 });
 
+InventarioAlmacenProducto.belongsTo(InventarioAlmacenProducto, {
+  foreignKey: 'producto_base_id',
+  as: 'base'
+});
+
+InventarioAlmacenProducto.hasMany(InventarioAlmacenProducto, {
+  foreignKey: 'producto_base_id',
+  as: 'presentaciones'
+});
+
+Receta.hasMany(RecetaInsumo, {
+  foreignKey: 'receta_id',
+  as: 'insumos'
+});
+
+RecetaInsumo.belongsTo(Receta, {
+  foreignKey: 'receta_id',
+  as: 'receta'
+});
+
+RecetaInsumo.belongsTo(InventarioAlmacenProducto, {
+  foreignKey: 'insumo_id',
+  as: 'producto'
+});
+
 export {
   sequelize,
   Usuario,
@@ -198,5 +225,7 @@ export {
   IngresoAlmacen,
   DetalleIngresoAlmacen,
   SalidaAlmacen,
-  DetalleSalidaAlmacen
+  DetalleSalidaAlmacen,
+  Receta,
+  RecetaInsumo
 };

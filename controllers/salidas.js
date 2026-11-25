@@ -1,6 +1,7 @@
-import { Op } from 'sequelize';
+import { Op, QueryTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
 import {
+  Documento,
   SalidaAlmacen,
   DetalleSalidaAlmacen,
   InventarioAlmacenLote,
@@ -10,6 +11,7 @@ import {
 import { ErrorNegocio } from '../utils/error-negocio.js';
 import { inicioDelDia, finDelDia, fechaLocal, diasEntre } from '../utils/fechas-bolivia.js';
 import { salidaPublico, redondear } from '../utils/inventario-publico.js';
+import { CANTIDAD_MAXIMA } from '../utils/inventario-reglas.js';
 import { responderError } from '../utils/responder-error.js';
 
 const ITEMS_DE_LA_SALIDA = sequelize.literal(`(
@@ -46,6 +48,36 @@ const buscarSalida = (id) => {
       }
     ]
   });
+};
+
+// Origen de cada lote (design.md 12.1): tipo del ingreso mas antiguo que lo alimento.
+const origenDeLotes = async (loteIds) => {
+  if (loteIds.length === 0) {
+    return new Map();
+  }
+
+  const filas = await sequelize.query(
+    `SELECT DISTINCT ON (d.inventario_almacen_lote_id)
+            d.inventario_almacen_lote_id AS lote_id,
+            i.tipo_ingreso
+     FROM detalle_ingreso_almacen AS d
+     JOIN ingreso_almacen AS i ON i.id = d.ingreso_almacen_id
+     WHERE d.inventario_almacen_lote_id IN (:loteIds)
+     ORDER BY d.inventario_almacen_lote_id, i.fecha ASC`,
+    {
+      replacements: { loteIds },
+      type: QueryTypes.SELECT
+    }
+  );
+
+  return new Map(filas.map((fila) => [fila.lote_id, fila.tipo_ingreso]));
+};
+
+const salidaConOrigen = async (salida) => {
+  const loteIds = (salida.detalles ?? []).map((detalle) => detalle.inventario_almacen_lote_id);
+  const origenes = await origenDeLotes([...new Set(loteIds)]);
+
+  return salidaPublico(salida, origenes);
 };
 
 // Decide de que lotes sale cada item, sin escribir nada. Los lotes que se tocan quedan
@@ -202,7 +234,9 @@ export const getSalidas = async (req, res) => {
       tipo_salida: tipoSalida,
       fecha_desde: fechaDesde,
       fecha_hasta: fechaHasta,
-      buscar
+      buscar,
+      estado,
+      recibido_conforme: recibidoConforme
     } = req.query;
     const pagina = Number(req.query.pagina ?? 1);
     const limite = Number(req.query.limite ?? 20);
@@ -218,6 +252,15 @@ export const getSalidas = async (req, res) => {
 
     if (tipoSalida) {
       where.tipo_salida = tipoSalida;
+    }
+
+    if (estado) {
+      where.estado = estado;
+    }
+
+    if (recibidoConforme !== undefined) {
+      where.recibido_conforme = recibidoConforme;
+      where.tipo_salida = 'consumo';
     }
 
     if (fechaDesde || fechaHasta) {
@@ -237,7 +280,8 @@ export const getSalidas = async (req, res) => {
 
       where[Op.or] = [
         { responsable: { [Op.iLike]: termino } },
-        { nro_csa: { [Op.iLike]: termino } }
+        { nro_csa: { [Op.iLike]: termino } },
+        { ci_responsable: { [Op.iLike]: termino } }
       ];
     }
 
@@ -274,7 +318,7 @@ export const getSalida = async (req, res) => {
     return res.json({
       ok: true,
       msg: 'Salida obtenida',
-      salida: salidaPublico(salida)
+      salida: await salidaConOrigen(salida)
     });
   } catch (error) {
     responderError(res, error);
@@ -293,6 +337,7 @@ export const crearSalida = async (req, res) => {
           nro_csa: cuerpo.nro_csa ?? null,
           area_solicitante: cuerpo.area_solicitante ?? null,
           responsable: cuerpo.responsable,
+          ci_responsable: cuerpo.ci_responsable ?? null,
           programa_poa: cuerpo.programa_poa ?? null,
           usuario_id_despacha: req.usuario.id,
           fecha: cuerpo.fecha ?? new Date(),
@@ -332,7 +377,225 @@ export const crearSalida = async (req, res) => {
     return res.status(201).json({
       ok: true,
       msg: 'Salida registrada',
-      salida: salidaPublico(salida)
+      salida: await salidaConOrigen(salida)
+    });
+  } catch (error) {
+    responderError(res, error);
+  }
+};
+
+const MENSAJE_NO_ENCONTRADA = 'Salida no encontrada';
+
+const exigirSalidaActiva = (salida) => {
+  if (!salida) {
+    throw new ErrorNegocio(404, MENSAJE_NO_ENCONTRADA);
+  }
+
+  if (salida.estado === 'anulado') {
+    throw new ErrorNegocio(409, 'La salida esta anulada');
+  }
+};
+
+const textoOpcional = (valor) => {
+  if (valor === undefined || valor === null) {
+    return null;
+  }
+
+  const texto = String(valor).trim();
+
+  return texto === '' ? null : texto;
+};
+
+// Sugerencias para el campo "responsable": nombre y CI de las ultimas salidas de consumo.
+export const getResponsables = async (req, res) => {
+  try {
+    const { buscar } = req.query;
+
+    const filas = await sequelize.query(
+      `SELECT responsable, ci_responsable, MAX(fecha) AS ultima_fecha
+       FROM salida_almacen
+       WHERE tipo_salida = 'consumo'
+         AND estado = 'activo'
+         AND (CAST(:buscar AS text) IS NULL OR responsable ILIKE :patron OR ci_responsable ILIKE :patron)
+       GROUP BY responsable, ci_responsable
+       ORDER BY MAX(fecha) DESC
+       LIMIT 20`,
+      {
+        replacements: {
+          buscar: buscar ?? null,
+          patron: `%${buscar ?? ''}%`
+        },
+        type: QueryTypes.SELECT
+      }
+    );
+
+    return res.json({
+      ok: true,
+      msg: 'Responsables obtenidos',
+      responsables: filas.map((fila) => ({
+        responsable: fila.responsable,
+        ci_responsable: fila.ci_responsable,
+        ultima_fecha: fila.ultima_fecha
+      }))
+    });
+  } catch (error) {
+    responderError(res, error);
+  }
+};
+
+// Constancia de entrega a la cocina. No mueve stock (se descuenta al despachar).
+export const registrarRecepcion = async (req, res) => {
+  try {
+    await sequelize.transaction(async (transaccion) => {
+      const salida = await SalidaAlmacen.findByPk(req.params.id, {
+        transaction: transaccion,
+        lock: transaccion.LOCK.UPDATE
+      });
+
+      exigirSalidaActiva(salida);
+
+      if (salida.tipo_salida === 'ajuste') {
+        throw new ErrorNegocio(409, 'Un ajuste no se entrega a nadie: no lleva recepcion');
+      }
+
+      if (req.body.comprobante_documento_id) {
+        const documento = await Documento.findByPk(req.body.comprobante_documento_id, {
+          attributes: ['id'],
+          transaction: transaccion
+        });
+
+        if (!documento) {
+          throw new ErrorNegocio(400, 'El documento del comprobante no existe');
+        }
+      }
+
+      const recibido = req.body.recibido_conforme ?? true;
+
+      if (recibido) {
+        salida.fecha_recepcion = req.body.fecha_recepcion
+          ?? salida.fecha_recepcion
+          ?? new Date();
+      } else {
+        salida.fecha_recepcion = null;
+      }
+
+      salida.recibido_conforme = recibido;
+
+      if (req.body.comprobante_documento_id !== undefined) {
+        salida.comprobante_documento_id = req.body.comprobante_documento_id;
+      }
+
+      await salida.save({ transaction: transaccion });
+    });
+
+    const salida = await buscarSalida(req.params.id);
+
+    return res.json({
+      ok: true,
+      msg: 'Recepcion registrada',
+      salida: await salidaConOrigen(salida)
+    });
+  } catch (error) {
+    responderError(res, error);
+  }
+};
+
+// PATCH: solo datos que no afectan el stock (design.md 12.2).
+export const actualizarSalida = async (req, res) => {
+  try {
+    await sequelize.transaction(async (transaccion) => {
+      const salida = await SalidaAlmacen.findByPk(req.params.id, {
+        transaction: transaccion,
+        lock: transaccion.LOCK.UPDATE
+      });
+
+      exigirSalidaActiva(salida);
+
+      if (req.body.responsable !== undefined) {
+        salida.responsable = req.body.responsable;
+      }
+
+      for (const campo of ['ci_responsable', 'area_solicitante', 'programa_poa', 'nro_csa', 'observaciones']) {
+        if (req.body[campo] !== undefined) {
+          salida[campo] = textoOpcional(req.body[campo]);
+        }
+      }
+
+      await salida.save({ transaction: transaccion });
+    });
+
+    const salida = await buscarSalida(req.params.id);
+
+    return res.json({
+      ok: true,
+      msg: 'Salida actualizada',
+      salida: await salidaConOrigen(salida)
+    });
+  } catch (error) {
+    responderError(res, error);
+  }
+};
+
+// Anular = devolver las cantidades a sus lotes y dejar el documento como traza.
+export const anularSalida = async (req, res) => {
+  try {
+    await sequelize.transaction(async (transaccion) => {
+      const salida = await SalidaAlmacen.findByPk(req.params.id, {
+        transaction: transaccion,
+        lock: transaccion.LOCK.UPDATE
+      });
+
+      exigirSalidaActiva(salida);
+
+      if (salida.tipo_salida === 'ajuste') {
+        throw new ErrorNegocio(409, 'Un ajuste no se anula: se corrige con otro ajuste del lote');
+      }
+
+      const detalles = await DetalleSalidaAlmacen.findAll({
+        where: { salida_almacen_id: salida.id },
+        transaction: transaccion
+      });
+
+      const porLote = new Map();
+
+      for (const detalle of detalles) {
+        const acumulado = porLote.get(detalle.inventario_almacen_lote_id) ?? 0;
+        porLote.set(
+          detalle.inventario_almacen_lote_id,
+          redondear(acumulado + Number(detalle.cantidad_salida))
+        );
+      }
+
+      // Orden estable de bloqueo para no cruzarse con otra transaccion.
+      for (const loteId of [...porLote.keys()].sort()) {
+        const lote = await InventarioAlmacenLote.findByPk(loteId, {
+          transaction: transaccion,
+          lock: transaccion.LOCK.UPDATE
+        });
+
+        const nueva = redondear(Number(lote.cantidad_actual) + porLote.get(loteId));
+
+        if (nueva > CANTIDAD_MAXIMA) {
+          throw new ErrorNegocio(409, 'Devolver la cantidad superaria el maximo permitido en un lote');
+        }
+
+        lote.cantidad_actual = nueva;
+        await lote.save({ transaction: transaccion });
+      }
+
+      salida.estado = 'anulado';
+      salida.anulado_en = new Date();
+      salida.usuario_anula_id = req.usuario.id;
+      salida.motivo_anulacion = req.body.motivo;
+      await salida.save({ transaction: transaccion });
+    });
+
+    const salida = await buscarSalida(req.params.id);
+
+    return res.json({
+      ok: true,
+      msg: 'Salida anulada; las cantidades volvieron a sus lotes',
+      salida: await salidaConOrigen(salida)
     });
   } catch (error) {
     responderError(res, error);
@@ -342,5 +605,9 @@ export const crearSalida = async (req, res) => {
 export default {
   getSalidas,
   getSalida,
-  crearSalida
+  getResponsables,
+  crearSalida,
+  registrarRecepcion,
+  actualizarSalida,
+  anularSalida
 };

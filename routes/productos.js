@@ -50,9 +50,26 @@ const validarDatosProducto = [
     .withMessage('El contenido neto debe ser un numero mayor a 0')
     .toFloat(),
   body('precio_referencia_usd')
+    .optional({ nullable: true })
     .isFloat({ gt: 0, max: 99999999 })
     .withMessage('El precio de referencia (USD) debe ser un numero mayor a 0')
     .toFloat(),
+  body('precio_referencia_bs')
+    .optional({ nullable: true })
+    .isFloat({ gt: 0, max: 99999999 })
+    .withMessage('El precio de referencia (Bs) debe ser un numero mayor a 0')
+    .toFloat(),
+  body()
+    .custom((cuerpo) => {
+      const tieneUsd = cuerpo.precio_referencia_usd !== undefined && cuerpo.precio_referencia_usd !== null;
+      const tieneBs = cuerpo.precio_referencia_bs !== undefined && cuerpo.precio_referencia_bs !== null;
+
+      if (!tieneUsd && !tieneBs) {
+        throw new Error('Indica el precio de referencia en Bs (precio_referencia_bs) o en USD (precio_referencia_usd)');
+      }
+
+      return true;
+    }),
   body('producto_base_id')
     .optional({ nullable: true })
     .isUUID()

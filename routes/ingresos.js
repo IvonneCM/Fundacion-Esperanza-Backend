@@ -3,7 +3,9 @@ import { body, param, query } from 'express-validator';
 import {
   getIngresos,
   getIngreso,
-  crearIngreso
+  crearIngreso,
+  actualizarIngreso,
+  anularIngreso
 } from '../controllers/ingresos.js';
 import { validarCampos } from '../middlewares/validar-campos.js';
 import { validarJWT } from '../middlewares/validar-jwt.js';
@@ -35,6 +37,7 @@ const validarDatosIngreso = [
     .withMessage('La fecha debe tener formato ISO 8601')
     .toDate(),
   body('tipo_cambio_bs_usd')
+    .optional({ nullable: true })
     .isFloat({ gt: 0, max: 99999999 })
     .withMessage('El tipo de cambio debe ser un numero mayor a 0')
     .toFloat(),
@@ -268,6 +271,10 @@ router.get(
       .optional()
       .isUUID()
       .withMessage('El proveedor debe ser un UUID valido'),
+    query('estado')
+      .optional()
+      .isIn(['activo', 'anulado'])
+      .withMessage('El estado debe ser activo o anulado'),
     query('fecha_desde')
       .optional()
       .isDate(FORMATO_FECHA)
@@ -341,5 +348,229 @@ router.post('/', validarDatosIngreso, validarCampos, crearIngreso);
  *               $ref: '#/components/schemas/Error'
  */
 router.get('/:id', validarId, validarCampos, getIngreso);
+
+/**
+ * @openapi
+ * /api/ingresos/{id}:
+ *   patch:
+ *     tags: [Inventario]
+ *     summary: Editar datos de un ingreso que no afectan el stock
+ *     description: >
+ *       Solo administradores. Cambia solo los campos enviados (al menos uno): `proveedor_id`
+ *       (un ingreso de compra no puede quedar sin proveedor), `nro_documento_respaldo`,
+ *       `nro_cia`, `motivo`, `observaciones`. Las cantidades y precios no se editan: se corrigen
+ *       anulando el ingreso. Un ingreso anulado responde 409.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               proveedor_id:
+ *                 type: string
+ *                 format: uuid
+ *                 nullable: true
+ *               nro_documento_respaldo:
+ *                 type: string
+ *                 nullable: true
+ *                 maxLength: 30
+ *               nro_cia:
+ *                 type: integer
+ *                 nullable: true
+ *               motivo:
+ *                 type: string
+ *                 nullable: true
+ *                 maxLength: 200
+ *               observaciones:
+ *                 type: string
+ *                 nullable: true
+ *                 maxLength: 255
+ *     responses:
+ *       200:
+ *         description: Ingreso actualizado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                 ingreso:
+ *                   $ref: '#/components/schemas/IngresoAlmacenDetalle'
+ *       400:
+ *         description: Datos invalidos.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorValidacion'
+ *       401:
+ *         description: Sin token o token invalido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: El rol del usuario no es admin.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Ingreso o proveedor no encontrado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       409:
+ *         description: Ingreso anulado o proveedor desactivado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ * /api/ingresos/{id}/anular:
+ *   post:
+ *     tags: [Inventario]
+ *     summary: Anular un ingreso
+ *     description: >
+ *       Solo administradores. Descuenta de cada lote lo que este ingreso puso y deja el ingreso
+ *       como traza (`estado: anulado`, con fecha y motivo). **Solo se permite si ese stock sigue
+ *       en el lote**: si parte ya se uso, responde 409 con los lotes afectados y no cambia nada
+ *       (hay que anular antes las salidas que lo consumieron). No se anulan los ajustes (se
+ *       corrigen con otro ajuste del lote). Todo en una transaccion.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [motivo]
+ *             properties:
+ *               motivo:
+ *                 type: string
+ *                 maxLength: 255
+ *     responses:
+ *       200:
+ *         description: Ingreso anulado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                 ingreso:
+ *                   $ref: '#/components/schemas/IngresoAlmacenDetalle'
+ *       400:
+ *         description: Falta el motivo o el id es invalido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorValidacion'
+ *       401:
+ *         description: Sin token o token invalido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: El rol del usuario no es admin.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Ingreso no encontrado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       409:
+ *         description: Ya anulado, es un ajuste, o parte de lo ingresado ya se uso.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.patch(
+  '/:id',
+  [
+    validarId,
+    body().custom((cuerpo) => {
+      const campos = ['proveedor_id', 'nro_documento_respaldo', 'nro_cia', 'motivo', 'observaciones'];
+
+      if (!campos.some((campo) => cuerpo[campo] !== undefined)) {
+        throw new Error(`Envia al menos uno de: ${campos.join(', ')}`);
+      }
+
+      return true;
+    }),
+    body('proveedor_id')
+      .optional({ nullable: true })
+      .isUUID()
+      .withMessage('El proveedor debe ser un UUID valido'),
+    body('nro_cia')
+      .optional({ nullable: true })
+      .isInt({ min: 1, max: 2147483647 })
+      .withMessage('El numero CIA debe ser un entero mayor a 0')
+      .toInt(),
+    body('nro_documento_respaldo')
+      .optional({ nullable: true })
+      .trim()
+      .isLength({ max: 30 })
+      .withMessage('El documento de respaldo no puede superar 30 caracteres'),
+    body('motivo')
+      .optional({ nullable: true })
+      .trim()
+      .isLength({ max: 200 })
+      .withMessage('El motivo no puede superar 200 caracteres'),
+    body('observaciones')
+      .optional({ nullable: true })
+      .trim()
+      .isLength({ max: 255 })
+      .withMessage('Las observaciones no pueden superar 255 caracteres')
+  ],
+  validarCampos,
+  actualizarIngreso
+);
+
+router.post(
+  '/:id/anular',
+  [
+    validarId,
+    body('motivo')
+      .trim()
+      .notEmpty()
+      .withMessage('El motivo de la anulacion es obligatorio')
+      .isLength({ max: 255 })
+      .withMessage('El motivo no puede superar 255 caracteres')
+  ],
+  validarCampos,
+  anularIngreso
+);
 
 export default router;

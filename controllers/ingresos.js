@@ -12,6 +12,7 @@ import { ErrorNegocio } from '../utils/error-negocio.js';
 import { inicioDelDia, finDelDia, fechaLocal } from '../utils/fechas-bolivia.js';
 import { ingresoPublico, redondear } from '../utils/inventario-publico.js';
 import { CANTIDAD_MAXIMA } from '../utils/inventario-reglas.js';
+import { tipoCambioPorDefecto, usdDesdeBs } from '../utils/moneda.js';
 import { responderError } from '../utils/responder-error.js';
 
 const ITEMS_DEL_INGRESO = sequelize.literal(`(
@@ -59,7 +60,7 @@ const buscarIngreso = (id) => {
 
 // Lee y valida todos los items antes de escribir nada: si algo no cuadra, la transaccion
 // termina sin haber insertado filas. Los lotes existentes se bloquean (FOR UPDATE).
-const prepararItems = async (items, transaccion) => {
+const prepararItems = async (items, tipoCambio, transaccion) => {
   const lotesCargados = new Map();
   const preparados = [];
 
@@ -118,8 +119,10 @@ const prepararItems = async (items, transaccion) => {
       }
     }
 
-    // Precio por presentacion: el indicado, o el del lote, o el de referencia del producto.
+    // Precio por presentacion: el indicado (en USD, o en Bs convertido con el tipo de cambio
+    // del ingreso), o el del lote, o el de referencia del producto (design.md 12.3).
     const precio = item.precio_unitario_usd
+      ?? (item.precio_unitario_bs ? usdDesdeBs(item.precio_unitario_bs, tipoCambio) : null)
       ?? (lote?.precio_unitario_usd ? Number(lote.precio_unitario_usd) : null)
       ?? Number(producto.precio_referencia_usd);
 
@@ -141,7 +144,8 @@ export const getIngresos = async (req, res) => {
       tipo_ingreso: tipoIngreso,
       proveedor_id: proveedorId,
       fecha_desde: fechaDesde,
-      fecha_hasta: fechaHasta
+      fecha_hasta: fechaHasta,
+      estado
     } = req.query;
     const pagina = Number(req.query.pagina ?? 1);
     const limite = Number(req.query.limite ?? 20);
@@ -161,6 +165,10 @@ export const getIngresos = async (req, res) => {
 
     if (proveedorId) {
       where.proveedor_id = proveedorId;
+    }
+
+    if (estado) {
+      where.estado = estado;
     }
 
     if (fechaDesde || fechaHasta) {
@@ -241,7 +249,8 @@ export const crearIngreso = async (req, res) => {
         }
       }
 
-      const preparados = await prepararItems(cuerpo.detalles, transaccion);
+      const tipoCambio = cuerpo.tipo_cambio_bs_usd ?? tipoCambioPorDefecto();
+      const preparados = await prepararItems(cuerpo.detalles, tipoCambio, transaccion);
 
       const fechaIngreso = cuerpo.fecha ?? new Date();
 
@@ -253,7 +262,7 @@ export const crearIngreso = async (req, res) => {
           usuario_recibe: req.usuario.id,
           proveedor_id: cuerpo.proveedor_id ?? null,
           fecha: fechaIngreso,
-          tipo_cambio_bs_usd: cuerpo.tipo_cambio_bs_usd,
+          tipo_cambio_bs_usd: tipoCambio,
           moneda_compra: cuerpo.moneda_compra ?? 'BOB',
           monto_total_bs: cuerpo.monto_total_bs ?? null,
           nro_documento_respaldo: cuerpo.nro_documento_respaldo ?? null,
@@ -320,8 +329,174 @@ export const crearIngreso = async (req, res) => {
   }
 };
 
+const exigirIngresoActivo = (ingreso) => {
+  if (!ingreso) {
+    throw new ErrorNegocio(404, 'Ingreso no encontrado');
+  }
+
+  if (ingreso.estado === 'anulado') {
+    throw new ErrorNegocio(409, 'El ingreso esta anulado');
+  }
+};
+
+const textoOpcional = (valor) => {
+  if (valor === undefined || valor === null) {
+    return null;
+  }
+
+  const texto = String(valor).trim();
+
+  return texto === '' ? null : texto;
+};
+
+// PATCH: solo datos que no afectan el stock (design.md 12.2).
+export const actualizarIngreso = async (req, res) => {
+  try {
+    await sequelize.transaction(async (transaccion) => {
+      const ingreso = await IngresoAlmacen.findByPk(req.params.id, {
+        transaction: transaccion,
+        lock: transaccion.LOCK.UPDATE
+      });
+
+      exigirIngresoActivo(ingreso);
+
+      if (req.body.proveedor_id !== undefined) {
+        if (req.body.proveedor_id === null) {
+          if (ingreso.tipo_ingreso === 'compra') {
+            throw new ErrorNegocio(400, 'Un ingreso de tipo compra requiere proveedor');
+          }
+
+          ingreso.proveedor_id = null;
+        } else {
+          const proveedor = await Proveedor.findByPk(req.body.proveedor_id, {
+            transaction: transaccion
+          });
+
+          if (!proveedor) {
+            throw new ErrorNegocio(404, 'Proveedor no encontrado');
+          }
+
+          if (!proveedor.activo) {
+            throw new ErrorNegocio(409, 'El proveedor esta desactivado');
+          }
+
+          ingreso.proveedor_id = proveedor.id;
+        }
+      }
+
+      if (req.body.nro_cia !== undefined) {
+        ingreso.nro_cia = req.body.nro_cia;
+      }
+
+      for (const campo of ['nro_documento_respaldo', 'motivo', 'observaciones']) {
+        if (req.body[campo] !== undefined) {
+          ingreso[campo] = textoOpcional(req.body[campo]);
+        }
+      }
+
+      await ingreso.save({ transaction: transaccion });
+    });
+
+    const ingreso = await buscarIngreso(req.params.id);
+
+    return res.json({
+      ok: true,
+      msg: 'Ingreso actualizado',
+      ingreso: ingresoPublico(ingreso)
+    });
+  } catch (error) {
+    responderError(res, error);
+  }
+};
+
+// Anular un ingreso solo es posible si el stock de cada lote que alimento sigue siendo al
+// menos lo que ese ingreso puso: asi nunca queda una existencia negativa (design.md 12.2).
+export const anularIngreso = async (req, res) => {
+  try {
+    await sequelize.transaction(async (transaccion) => {
+      const ingreso = await IngresoAlmacen.findByPk(req.params.id, {
+        transaction: transaccion,
+        lock: transaccion.LOCK.UPDATE
+      });
+
+      exigirIngresoActivo(ingreso);
+
+      if (ingreso.tipo_ingreso === 'ajuste') {
+        throw new ErrorNegocio(409, 'Un ajuste no se anula: se corrige con otro ajuste del lote');
+      }
+
+      const detalles = await DetalleIngresoAlmacen.findAll({
+        where: { ingreso_almacen_id: ingreso.id },
+        transaction: transaccion
+      });
+
+      const porLote = new Map();
+
+      for (const detalle of detalles) {
+        const acumulado = porLote.get(detalle.inventario_almacen_lote_id) ?? 0;
+        porLote.set(
+          detalle.inventario_almacen_lote_id,
+          redondear(acumulado + Number(detalle.cantidad_ingresada))
+        );
+      }
+
+      const lotes = [];
+      const consumidos = [];
+
+      // Orden estable de bloqueo para no cruzarse con otra transaccion.
+      for (const loteId of [...porLote.keys()].sort()) {
+        const lote = await InventarioAlmacenLote.findByPk(loteId, {
+          transaction: transaccion,
+          lock: transaccion.LOCK.UPDATE
+        });
+
+        const requerido = porLote.get(loteId);
+        const disponible = Number(lote.cantidad_actual);
+
+        if (disponible < requerido) {
+          consumidos.push(
+            `${lote.nombre} (lote ${lote.id}): ingreso ${requerido} ${lote.unidad_medida}, quedan ${disponible}`
+          );
+        }
+
+        lotes.push({ lote, requerido });
+      }
+
+      if (consumidos.length > 0) {
+        throw new ErrorNegocio(
+          409,
+          `No se puede anular: parte de lo que ingreso ya se uso. Anule antes las salidas que lo consumieron. ${consumidos.join('; ')}`
+        );
+      }
+
+      for (const { lote, requerido } of lotes) {
+        lote.cantidad_actual = redondear(Number(lote.cantidad_actual) - requerido);
+        await lote.save({ transaction: transaccion });
+      }
+
+      ingreso.estado = 'anulado';
+      ingreso.anulado_en = new Date();
+      ingreso.usuario_anula_id = req.usuario.id;
+      ingreso.motivo_anulacion = req.body.motivo;
+      await ingreso.save({ transaction: transaccion });
+    });
+
+    const ingreso = await buscarIngreso(req.params.id);
+
+    return res.json({
+      ok: true,
+      msg: 'Ingreso anulado; se descontaron sus cantidades de los lotes',
+      ingreso: ingresoPublico(ingreso)
+    });
+  } catch (error) {
+    responderError(res, error);
+  }
+};
+
 export default {
   getIngresos,
   getIngreso,
-  crearIngreso
+  crearIngreso,
+  actualizarIngreso,
+  anularIngreso
 };

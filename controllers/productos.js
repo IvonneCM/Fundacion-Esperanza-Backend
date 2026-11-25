@@ -5,6 +5,7 @@ import InventarioAlmacenLote from '../models/InventarioAlmacenLote.js';
 import RecetaInsumo from '../models/RecetaInsumo.js';
 import { ErrorNegocio } from '../utils/error-negocio.js';
 import { resumirInsumos } from '../utils/insumos.js';
+import { tipoCambioPorDefecto, usdDesdeBs } from '../utils/moneda.js';
 import { responderError } from '../utils/responder-error.js';
 import { productoPublico, lotePublico } from '../utils/inventario-publico.js';
 import { inicioDelDia, fechaLocal } from '../utils/fechas-bolivia.js';
@@ -34,6 +35,16 @@ const textoOpcional = (valor) => {
   const texto = String(valor).trim();
 
   return texto === '' ? null : texto;
+};
+
+// El precio de referencia se guarda en USD; si llega en Bs se convierte con el tipo de
+// cambio por defecto (design.md 12.3). Si llegan los dos, manda el USD.
+const precioReferenciaUsd = (body) => {
+  if (body.precio_referencia_usd !== undefined && body.precio_referencia_usd !== null) {
+    return body.precio_referencia_usd;
+  }
+
+  return usdDesdeBs(body.precio_referencia_bs, tipoCambioPorDefecto());
 };
 
 // Campos de agrupacion (design.md 11.1). PUT reemplaza todo: lo que no llega queda en null.
@@ -285,7 +296,7 @@ export const crearProducto = async (req, res) => {
       tipo_envase: req.body.tipo_envase,
       unidad_medida: req.body.unidad_medida,
       contenido_neto_referencia: req.body.contenido_neto_referencia,
-      precio_referencia_usd: req.body.precio_referencia_usd,
+      precio_referencia_usd: precioReferenciaUsd(req.body),
       ...agrupacion
     });
 
@@ -349,7 +360,7 @@ export const actualizarProducto = async (req, res) => {
     producto.tipo_envase = req.body.tipo_envase;
     producto.unidad_medida = req.body.unidad_medida;
     producto.contenido_neto_referencia = req.body.contenido_neto_referencia;
-    producto.precio_referencia_usd = req.body.precio_referencia_usd;
+    producto.precio_referencia_usd = precioReferenciaUsd(req.body);
     producto.producto_base_id = agrupacion.producto_base_id;
     producto.marca = agrupacion.marca;
     producto.medida_casera_nombre = agrupacion.medida_casera_nombre;

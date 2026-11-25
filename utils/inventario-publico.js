@@ -1,4 +1,5 @@
 import { fechaLocal, diasEntre } from './fechas-bolivia.js';
+import { bsDesdeUsd, tipoCambioPorDefecto } from './moneda.js';
 
 // Postgres devuelve los numeric como texto; la API los entrega como numero.
 export const redondear = (valor, decimales = 2) => {
@@ -28,6 +29,8 @@ export const productoPublico = (producto) => {
     unidad_medida: producto.unidad_medida,
     contenido_neto_referencia: contenido,
     precio_referencia_usd: Number(producto.precio_referencia_usd),
+    precio_referencia_bs: bsDesdeUsd(producto.precio_referencia_usd, tipoCambioPorDefecto()),
+    tipo_cambio_usado: tipoCambioPorDefecto(),
     producto_base_id: producto.producto_base_id ?? null,
     marca: producto.marca ?? null,
     medida_casera_nombre: producto.medida_casera_nombre ?? null,
@@ -59,6 +62,9 @@ export const lotePublico = (lote) => {
     cantidad_inicial: Number(lote.cantidad_inicial),
     unidad_medida: lote.unidad_medida,
     precio_unitario_usd: aNumero(lote.precio_unitario_usd),
+    precio_unitario_bs: lote.precio_unitario_usd === null || lote.precio_unitario_usd === undefined
+      ? null
+      : bsDesdeUsd(lote.precio_unitario_usd, tipoCambioPorDefecto()),
     notas: lote.notas,
     fecha_expiracion: lote.fecha_expiracion,
     vence_el: fechaLocal(lote.fecha_expiracion),
@@ -99,7 +105,8 @@ export const loteAlertaPublico = (lote, hoy) => {
   };
 };
 
-export const detalleIngresoPublico = (detalle) => {
+// `tipoCambio` es el del ingreso: con el se calcula el Bs cuando no se registro el real.
+export const detalleIngresoPublico = (detalle, tipoCambio) => {
   const lote = detalle.lote;
   const producto = lote?.producto;
   const cantidadBase = Number(detalle.cantidad_ingresada);
@@ -120,7 +127,8 @@ export const detalleIngresoPublico = (detalle) => {
     cantidad_base: cantidadBase,
     cantidad_presentaciones: contenido > 0 ? redondear(cantidadBase / contenido) : null,
     precio_unitario_usd: Number(detalle.precio_unitario_usd),
-    precio_unitario_bs: aNumero(detalle.precio_unitario_bs),
+    precio_unitario_bs: aNumero(detalle.precio_unitario_bs)
+      ?? bsDesdeUsd(detalle.precio_unitario_usd, tipoCambio ?? tipoCambioPorDefecto()),
     fecha_expiracion: detalle.fecha_expiracion
   };
 };
@@ -138,6 +146,7 @@ export const ingresoPublico = (ingreso) => {
     monto_total_bs: aNumero(ingreso.monto_total_bs),
     motivo: ingreso.motivo,
     observaciones: ingreso.observaciones,
+    ...anulacionPublica(ingreso),
     proveedor: ingreso.proveedor
       ? {
           id: ingreso.proveedor.id,
@@ -161,13 +170,25 @@ export const ingresoPublico = (ingreso) => {
   }
 
   if (ingreso.detalles) {
-    publico.detalles = ingreso.detalles.map(detalleIngresoPublico);
+    publico.detalles = ingreso.detalles.map((detalle) => {
+      return detalleIngresoPublico(detalle, Number(ingreso.tipo_cambio_bs_usd));
+    });
   }
 
   return publico;
 };
 
-export const detalleSalidaPublico = (detalle) => {
+// Datos de anulacion, iguales en ingresos y salidas (design.md 12.2).
+const anulacionPublica = (movimiento) => {
+  return {
+    estado: movimiento.estado,
+    anulado_en: movimiento.anulado_en ?? null,
+    motivo_anulacion: movimiento.motivo_anulacion ?? null
+  };
+};
+
+// `origenes`: Map lote_id -> tipo del ingreso mas antiguo del lote (compra, donacion...).
+export const detalleSalidaPublico = (detalle, origenes) => {
   const lote = detalle.lote;
   const producto = lote?.producto;
   const cantidadBase = Number(detalle.cantidad_salida);
@@ -185,6 +206,7 @@ export const detalleSalidaPublico = (detalle) => {
         }
       : null,
     lote_id: detalle.inventario_almacen_lote_id,
+    origen: origenes?.get(detalle.inventario_almacen_lote_id) ?? null,
     fecha_expiracion: lote ? fechaLocal(lote.fecha_expiracion) : null,
     cantidad_base: cantidadBase,
     cantidad_presentaciones: contenido > 0 ? redondear(cantidadBase / contenido) : null,
@@ -194,7 +216,9 @@ export const detalleSalidaPublico = (detalle) => {
 };
 
 // `items` solo viene en los listados (conteo calculado); en el detalle se usa `detalles`.
-export const salidaPublico = (salida) => {
+export const salidaPublico = (salida, origenes) => {
+  const esAjuste = salida.tipo_salida === 'ajuste';
+
   const publico = {
     id: salida.id,
     tipo_salida: salida.tipo_salida,
@@ -202,8 +226,14 @@ export const salidaPublico = (salida) => {
     nro_csa: salida.nro_csa,
     area_solicitante: salida.area_solicitante,
     responsable: salida.responsable,
+    ci_responsable: salida.ci_responsable ?? null,
+    // Los ajustes no se entregan a nadie: no llevan recepcion.
+    recibido_conforme: esAjuste ? null : salida.recibido_conforme,
+    fecha_recepcion: esAjuste ? null : salida.fecha_recepcion ?? null,
+    comprobante_documento_id: salida.comprobante_documento_id ?? null,
     programa_poa: salida.programa_poa,
     observaciones: salida.observaciones,
+    ...anulacionPublica(salida),
     despachado_por: salida.despachadoPor
       ? {
           id: salida.despachadoPor.id,
@@ -220,7 +250,7 @@ export const salidaPublico = (salida) => {
   }
 
   if (salida.detalles) {
-    publico.detalles = salida.detalles.map(detalleSalidaPublico);
+    publico.detalles = salida.detalles.map((detalle) => detalleSalidaPublico(detalle, origenes));
   }
 
   return publico;

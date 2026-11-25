@@ -145,6 +145,7 @@ export const getLote = async (req, res) => {
       tipo: 'ingreso',
       subtipo: detalle.ingreso.tipo_ingreso,
       movimiento_id: detalle.ingreso.id,
+      estado: detalle.ingreso.estado,
       fecha: detalle.ingreso.fecha,
       cantidad_base: Number(detalle.cantidad_ingresada)
     }));
@@ -153,6 +154,7 @@ export const getLote = async (req, res) => {
       tipo: 'salida',
       subtipo: detalle.salida.tipo_salida,
       movimiento_id: detalle.salida.id,
+      estado: detalle.salida.estado,
       fecha: detalle.salida.fecha,
       cantidad_base: Number(detalle.cantidad_salida)
     }));

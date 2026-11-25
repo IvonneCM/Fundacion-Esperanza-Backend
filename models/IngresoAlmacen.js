@@ -63,6 +63,26 @@ const IngresoAlmacen = sequelize.define(
     observaciones: {
       type: DataTypes.STRING(255),
       allowNull: true
+    },
+    estado: {
+      type: DataTypes.STRING(10),
+      allowNull: false,
+      defaultValue: 'activo',
+      validate: {
+        isIn: [['activo', 'anulado']]
+      }
+    },
+    anulado_en: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    usuario_anula_id: {
+      type: DataTypes.UUID,
+      allowNull: true
+    },
+    motivo_anulacion: {
+      type: DataTypes.STRING(255),
+      allowNull: true
     }
   },
   {

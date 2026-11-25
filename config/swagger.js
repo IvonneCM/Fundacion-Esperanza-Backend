@@ -304,6 +304,15 @@ const definicion = {
             description: 'Precio de referencia por presentacion, en USD.',
             example: 55
           },
+          precio_referencia_bs: {
+            type: 'number',
+            description: 'El mismo precio en bolivianos, con el tipo de cambio por defecto del servidor (tipo_cambio_usado).',
+            example: 382.8
+          },
+          tipo_cambio_usado: {
+            type: 'number',
+            example: 6.96
+          },
           producto_base_id: {
             type: 'string',
             format: 'uuid',
@@ -346,7 +355,8 @@ const definicion = {
       },
       ProductoInventarioCrear: {
         type: 'object',
-        required: ['codigo', 'nombre', 'tipo_envase', 'unidad_medida', 'contenido_neto_referencia', 'precio_referencia_usd'],
+        required: ['codigo', 'nombre', 'tipo_envase', 'unidad_medida', 'contenido_neto_referencia'],
+        description: 'Indique el precio de referencia en Bs (precio_referencia_bs) o en USD (precio_referencia_usd). Si llegan los dos, manda el USD.',
         properties: {
           codigo: {
             type: 'string',
@@ -378,6 +388,12 @@ const definicion = {
             type: 'number',
             exclusiveMinimum: 0,
             example: 55
+          },
+          precio_referencia_bs: {
+            type: 'number',
+            exclusiveMinimum: 0,
+            description: 'Alternativa al USD: se convierte con el tipo de cambio por defecto del servidor.',
+            example: 382.8
           },
           producto_base_id: {
             type: 'string',
@@ -443,6 +459,13 @@ const definicion = {
             type: 'number',
             description: 'Suma de cantidad por persona x precio vigente por unidad base.'
           },
+          costo_por_persona_bs: {
+            type: 'number'
+          },
+          tipo_cambio_usado: {
+            type: 'number',
+            description: 'El del parametro tipo_cambio_bs_usd, o el configurado en el servidor.'
+          },
           insumos: {
             type: 'array',
             items: {
@@ -482,12 +505,19 @@ const definicion = {
                   type: 'number',
                   description: 'USD por unidad base.'
                 },
+                precio_base_bs: {
+                  type: 'number',
+                  description: 'Bs por unidad base.'
+                },
                 precio_fuente: {
                   type: 'string',
                   enum: ['lote', 'referencia'],
                   description: 'lote = el que vence primero; referencia = no hay stock.'
                 },
                 costo_por_persona_usd: {
+                  type: 'number'
+                },
+                costo_por_persona_bs: {
                   type: 'number'
                 }
               }
@@ -593,6 +623,12 @@ const definicion = {
             description: 'true si todos los insumos alcanzan.'
           },
           costo_estimado_usd: {
+            type: 'number'
+          },
+          costo_estimado_bs: {
+            type: 'number'
+          },
+          tipo_cambio_usado: {
             type: 'number'
           },
           insumos: {
@@ -809,7 +845,7 @@ const definicion = {
       },
       IngresoAlmacenCrear: {
         type: 'object',
-        required: ['tipo_ingreso', 'tipo_cambio_bs_usd', 'detalles'],
+        required: ['tipo_ingreso', 'detalles'],
         properties: {
           tipo_ingreso: {
             type: 'string',
@@ -831,7 +867,8 @@ const definicion = {
           tipo_cambio_bs_usd: {
             type: 'number',
             exclusiveMinimum: 0,
-            example: 6.96
+            example: 6.96,
+            description: 'Opcional: si se omite se usa el configurado en el servidor (TIPO_CAMBIO_BS_USD). Convierte los precios en Bs a USD.'
           },
           moneda_compra: {
             type: 'string',
@@ -973,6 +1010,19 @@ const definicion = {
             type: 'string',
             nullable: true
           },
+          estado: {
+            type: 'string',
+            enum: ['activo', 'anulado']
+          },
+          anulado_en: {
+            type: 'string',
+            format: 'date-time',
+            nullable: true
+          },
+          motivo_anulacion: {
+            type: 'string',
+            nullable: true
+          },
           proveedor: {
             type: 'object',
             nullable: true,
@@ -1069,8 +1119,14 @@ const definicion = {
           responsable: {
             type: 'string',
             maxLength: 100,
-            description: 'Quien entrega los insumos del almacen.',
+            description: 'Quien recibe los insumos (la encargada de la cocina).',
             example: 'Maria Lopez'
+          },
+          ci_responsable: {
+            type: 'string',
+            maxLength: 20,
+            nullable: true,
+            description: 'CI de quien recibe (opcional).'
           },
           nro_csa: {
             type: 'string',
@@ -1143,6 +1199,12 @@ const definicion = {
             type: 'string',
             format: 'uuid'
           },
+          origen: {
+            type: 'string',
+            nullable: true,
+            enum: ['compra', 'donacion', 'traspaso', 'ajuste'],
+            description: 'Tipo del ingreso mas antiguo del lote. Solo en el detalle de una salida.'
+          },
           fecha_expiracion: {
             type: 'string',
             format: 'date',
@@ -1191,7 +1253,41 @@ const definicion = {
             nullable: true
           },
           responsable: {
-            type: 'string'
+            type: 'string',
+            description: 'Quien recibe los insumos (la encargada de la cocina).'
+          },
+          ci_responsable: {
+            type: 'string',
+            nullable: true
+          },
+          recibido_conforme: {
+            type: 'boolean',
+            nullable: true,
+            description: 'Constancia de que la cocina recibio. null en los ajustes.'
+          },
+          fecha_recepcion: {
+            type: 'string',
+            format: 'date-time',
+            nullable: true
+          },
+          comprobante_documento_id: {
+            type: 'string',
+            format: 'uuid',
+            nullable: true,
+            description: 'Documento de Documental con la foto del comprobante firmado (opcional).'
+          },
+          estado: {
+            type: 'string',
+            enum: ['activo', 'anulado']
+          },
+          anulado_en: {
+            type: 'string',
+            format: 'date-time',
+            nullable: true
+          },
+          motivo_anulacion: {
+            type: 'string',
+            nullable: true
           },
           programa_poa: {
             type: 'string',

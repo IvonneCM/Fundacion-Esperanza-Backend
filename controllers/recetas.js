@@ -4,6 +4,7 @@ import { InventarioAlmacenProducto, Receta, RecetaInsumo } from '../models/index
 import { ErrorNegocio } from '../utils/error-negocio.js';
 import { resumirInsumos } from '../utils/insumos.js';
 import { redondear } from '../utils/inventario-publico.js';
+import { tipoCambioPorDefecto } from '../utils/moneda.js';
 import { responderError } from '../utils/responder-error.js';
 
 const MENSAJE_NO_ENCONTRADA = 'Receta no encontrada';
@@ -42,8 +43,15 @@ const textoOpcional = (valor) => {
   return texto === '' ? null : texto;
 };
 
-// Receta con disponibilidad y precio vigente de cada insumo (design.md 11.3 y 11.4).
-const recetaPublica = async (receta) => {
+// Tipo de cambio para mostrar Bs: el pedido por query, o el configurado (design.md 12.3).
+const tipoCambioDe = (req) => {
+  const pedido = Number(req.query.tipo_cambio_bs_usd);
+
+  return Number.isFinite(pedido) && pedido > 0 ? pedido : tipoCambioPorDefecto();
+};
+
+// Receta con disponibilidad y precio vigente de cada insumo (design.md 11.3, 11.4 y 12.3).
+const recetaPublica = async (receta, tipoCambio) => {
   const productos = receta.insumos.map((insumo) => insumo.producto);
   const resumen = await resumirInsumos(productos);
 
@@ -69,8 +77,10 @@ const recetaPublica = async (receta) => {
           producto.medida_casera_cantidad === null ? null : Number(producto.medida_casera_cantidad),
         stock_disponible_base: datos.stock_disponible_base,
         precio_base_usd: datos.precio_base_usd,
+        precio_base_bs: redondear(datos.precio_base_usd * tipoCambio, 4),
         precio_fuente: datos.precio_fuente,
-        costo_por_persona_usd: redondear(costo, 4)
+        costo_por_persona_usd: redondear(costo, 4),
+        costo_por_persona_bs: redondear(costo * tipoCambio, 4)
       };
     })
     .sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -80,6 +90,8 @@ const recetaPublica = async (receta) => {
     nombre: receta.nombre,
     descripcion: receta.descripcion,
     costo_por_persona_usd: redondear(costoPorPersona, 4),
+    costo_por_persona_bs: redondear(costoPorPersona * tipoCambio, 4),
+    tipo_cambio_usado: tipoCambio,
     insumos
   };
 };
@@ -185,7 +197,7 @@ export const getReceta = async (req, res) => {
     return res.json({
       ok: true,
       msg: 'Receta obtenida',
-      receta: await recetaPublica(receta)
+      receta: await recetaPublica(receta, tipoCambioDe(req))
     });
   } catch (error) {
     responderError(res, error);
@@ -201,7 +213,8 @@ export const getDisponibilidadReceta = async (req, res) => {
       return res.status(404).json({ ok: false, msg: MENSAJE_NO_ENCONTRADA });
     }
 
-    const publica = await recetaPublica(receta);
+    const tipoCambio = tipoCambioDe(req);
+    const publica = await recetaPublica(receta, tipoCambio);
 
     const insumos = publica.insumos.map((insumo) => {
       const requerido = redondear(insumo.cantidad_requerida * personas, 4);
@@ -229,6 +242,8 @@ export const getDisponibilidadReceta = async (req, res) => {
       personas,
       alcanza: insumos.every((insumo) => insumo.alcanza),
       costo_estimado_usd: redondear(publica.costo_por_persona_usd * personas, 2),
+      costo_estimado_bs: redondear(publica.costo_por_persona_bs * personas, 2),
+      tipo_cambio_usado: tipoCambio,
       insumos
     });
   } catch (error) {
@@ -259,7 +274,7 @@ export const crearReceta = async (req, res) => {
     return res.status(201).json({
       ok: true,
       msg: 'Receta creada',
-      receta: await recetaPublica(receta)
+      receta: await recetaPublica(receta, tipoCambioPorDefecto())
     });
   } catch (error) {
     responderError(res, error);
@@ -312,7 +327,7 @@ export const actualizarReceta = async (req, res) => {
     return res.json({
       ok: true,
       msg: 'Receta actualizada',
-      receta: await recetaPublica(receta)
+      receta: await recetaPublica(receta, tipoCambioPorDefecto())
     });
   } catch (error) {
     responderError(res, error);

@@ -234,6 +234,11 @@ router.post(
  *         schema:
  *           type: string
  *           format: uuid
+ *       - in: query
+ *         name: tipo_cambio_bs_usd
+ *         schema:
+ *           type: number
+ *         description: Opcional. Tipo de cambio para los importes en Bs; por defecto el configurado en el servidor (`tipo_cambio_usado` lo indica).
  *     responses:
  *       200:
  *         description: Receta con sus insumos.
@@ -452,13 +457,22 @@ router.get(
     query('personas')
       .isInt({ min: 1, max: 10000 })
       .withMessage('personas debe ser un entero entre 1 y 10000')
-      .toInt()
+      .toInt(),
+    query('tipo_cambio_bs_usd')
+      .optional()
+      .isFloat({ gt: 0, max: 99999999 })
+      .withMessage('El tipo de cambio debe ser un numero mayor a 0')
   ],
   validarCampos,
   getDisponibilidadReceta
 );
 
-router.get('/:id', validarId, validarCampos, getReceta);
+const validarTipoCambio = query('tipo_cambio_bs_usd')
+  .optional()
+  .isFloat({ gt: 0, max: 99999999 })
+  .withMessage('El tipo de cambio debe ser un numero mayor a 0');
+
+router.get('/:id', [validarId, validarTipoCambio], validarCampos, getReceta);
 
 router.patch(
   '/:id',

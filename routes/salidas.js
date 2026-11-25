@@ -3,13 +3,17 @@ import { body, param, query } from 'express-validator';
 import {
   getSalidas,
   getSalida,
-  crearSalida
+  getResponsables,
+  crearSalida,
+  registrarRecepcion,
+  actualizarSalida,
+  anularSalida
 } from '../controllers/salidas.js';
 import { validarCampos } from '../middlewares/validar-campos.js';
 import { validarJWT } from '../middlewares/validar-jwt.js';
 import { validarPaginacion } from '../middlewares/validar-paginacion.js';
 import { validarRol } from '../middlewares/validar-rol.js';
-import { TIPOS_SALIDA } from '../models/SalidaAlmacen.js';
+import { TIPOS_SALIDA, ESTADOS_MOVIMIENTO } from '../models/SalidaAlmacen.js';
 
 const router = Router();
 
@@ -21,6 +25,19 @@ const validarId = param('id')
   .isUUID()
   .withMessage('El id de la salida debe ser un UUID valido');
 
+const validarCiResponsable = body('ci_responsable')
+  .optional({ nullable: true })
+  .trim()
+  .isLength({ max: 20 })
+  .withMessage('El CI del responsable no puede superar 20 caracteres');
+
+const validarMotivoAnulacion = body('motivo')
+  .trim()
+  .notEmpty()
+  .withMessage('El motivo de la anulacion es obligatorio')
+  .isLength({ max: 255 })
+  .withMessage('El motivo no puede superar 255 caracteres');
+
 const validarDatosSalida = [
   body('responsable')
     .trim()
@@ -28,6 +45,7 @@ const validarDatosSalida = [
     .withMessage('El responsable es obligatorio')
     .isLength({ max: 100 })
     .withMessage('El responsable no puede superar 100 caracteres'),
+  validarCiResponsable,
   body('nro_csa')
     .optional({ nullable: true })
     .trim()
@@ -257,6 +275,15 @@ router.get(
       .trim()
       .isLength({ max: 100 })
       .withMessage('El termino de busqueda no puede superar los 100 caracteres'),
+    query('estado')
+      .optional()
+      .isIn(ESTADOS_MOVIMIENTO)
+      .withMessage(`El estado debe ser uno de: ${ESTADOS_MOVIMIENTO.join(', ')}`),
+    query('recibido_conforme')
+      .optional()
+      .isBoolean()
+      .withMessage('recibido_conforme debe ser true o false')
+      .toBoolean(),
     query('fecha_desde')
       .optional()
       .isDate(FORMATO_FECHA)
@@ -329,6 +356,410 @@ router.post('/', validarDatosSalida, validarCampos, crearSalida);
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
+/**
+ * @openapi
+ * /api/salidas/responsables:
+ *   get:
+ *     tags: [Inventario]
+ *     summary: Sugerencias de responsable (nombre y CI)
+ *     description: >
+ *       Solo administradores. Nombres y CI distintos de las ultimas salidas de consumo no
+ *       anuladas, la mas reciente primero (maximo 20). Sirve para sugerir al escribir el
+ *       responsable; no hay un catalogo aparte.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: buscar
+ *         schema:
+ *           type: string
+ *         description: Coincidencia parcial en nombre o CI.
+ *     responses:
+ *       200:
+ *         description: Lista de sugerencias.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                 responsables:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       responsable:
+ *                         type: string
+ *                       ci_responsable:
+ *                         type: string
+ *                         nullable: true
+ *                       ultima_fecha:
+ *                         type: string
+ *                         format: date-time
+ *       400:
+ *         description: Termino de busqueda invalido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorValidacion'
+ *       401:
+ *         description: Sin token o token invalido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: El rol del usuario no es admin.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.get(
+  '/responsables',
+  [
+    query('buscar')
+      .optional()
+      .trim()
+      .isLength({ max: 100 })
+      .withMessage('El termino de busqueda no puede superar los 100 caracteres')
+  ],
+  validarCampos,
+  getResponsables
+);
+
 router.get('/:id', validarId, validarCampos, getSalida);
+
+/**
+ * @openapi
+ * /api/salidas/{id}:
+ *   patch:
+ *     tags: [Inventario]
+ *     summary: Editar datos de una salida que no afectan el stock
+ *     description: >
+ *       Solo administradores. Cambia solo los campos enviados (al menos uno): `responsable`,
+ *       `ci_responsable`, `area_solicitante`, `programa_poa`, `nro_csa`, `observaciones`. Las
+ *       cantidades no se editan: se corrigen anulando la salida. Una salida anulada responde 409.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               responsable:
+ *                 type: string
+ *                 maxLength: 100
+ *               ci_responsable:
+ *                 type: string
+ *                 nullable: true
+ *                 maxLength: 20
+ *               area_solicitante:
+ *                 type: string
+ *                 nullable: true
+ *                 maxLength: 20
+ *               programa_poa:
+ *                 type: string
+ *                 nullable: true
+ *                 maxLength: 10
+ *               nro_csa:
+ *                 type: string
+ *                 nullable: true
+ *                 maxLength: 10
+ *               observaciones:
+ *                 type: string
+ *                 nullable: true
+ *                 maxLength: 255
+ *     responses:
+ *       200:
+ *         description: Salida actualizada.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                 salida:
+ *                   $ref: '#/components/schemas/SalidaAlmacenDetalle'
+ *       400:
+ *         description: Datos invalidos.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorValidacion'
+ *       401:
+ *         description: Sin token o token invalido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: El rol del usuario no es admin.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Salida no encontrada.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       409:
+ *         description: La salida esta anulada.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ * /api/salidas/{id}/recepcion:
+ *   patch:
+ *     tags: [Inventario]
+ *     summary: Registrar que la cocina recibio la salida
+ *     description: >
+ *       Solo administradores. Es una constancia: el stock ya se descuento al despachar y esto
+ *       no lo mueve. `recibido_conforme` es `true` por defecto; `fecha_recepcion` por defecto es
+ *       ahora y se conserva si ya existia. `comprobante_documento_id` (opcional) enlaza la foto
+ *       del comprobante firmado subida por Documental; se puede enviar despues. 409 si la salida
+ *       es un ajuste o esta anulada; 400 si el documento no existe.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               recibido_conforme:
+ *                 type: boolean
+ *                 default: true
+ *               fecha_recepcion:
+ *                 type: string
+ *                 format: date-time
+ *                 description: No puede ser futura.
+ *               comprobante_documento_id:
+ *                 type: string
+ *                 format: uuid
+ *                 nullable: true
+ *     responses:
+ *       200:
+ *         description: Recepcion registrada.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                 salida:
+ *                   $ref: '#/components/schemas/SalidaAlmacenDetalle'
+ *       400:
+ *         description: Datos invalidos o documento inexistente.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorValidacion'
+ *       401:
+ *         description: Sin token o token invalido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: El rol del usuario no es admin.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Salida no encontrada.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       409:
+ *         description: La salida es un ajuste o esta anulada.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ * /api/salidas/{id}/anular:
+ *   post:
+ *     tags: [Inventario]
+ *     summary: Anular una salida
+ *     description: >
+ *       Solo administradores. Devuelve las cantidades a sus lotes y deja la salida como traza
+ *       (`estado: anulado`, con fecha y motivo). Todo en una transaccion. No se anulan los ajustes
+ *       (se corrigen con otro ajuste del lote) ni una salida ya anulada (409).
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [motivo]
+ *             properties:
+ *               motivo:
+ *                 type: string
+ *                 maxLength: 255
+ *     responses:
+ *       200:
+ *         description: Salida anulada.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                 salida:
+ *                   $ref: '#/components/schemas/SalidaAlmacenDetalle'
+ *       400:
+ *         description: Falta el motivo o el id es invalido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorValidacion'
+ *       401:
+ *         description: Sin token o token invalido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: El rol del usuario no es admin.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Salida no encontrada.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       409:
+ *         description: Ya anulada, es un ajuste, o la devolucion superaria el maximo de un lote.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.patch(
+  '/:id',
+  [
+    validarId,
+    body().custom((cuerpo) => {
+      const campos = ['responsable', 'ci_responsable', 'area_solicitante', 'programa_poa', 'nro_csa', 'observaciones'];
+
+      if (!campos.some((campo) => cuerpo[campo] !== undefined)) {
+        throw new Error(`Envia al menos uno de: ${campos.join(', ')}`);
+      }
+
+      return true;
+    }),
+    body('responsable')
+      .optional()
+      .trim()
+      .notEmpty()
+      .withMessage('El responsable no puede quedar vacio')
+      .isLength({ max: 100 })
+      .withMessage('El responsable no puede superar 100 caracteres'),
+    validarCiResponsable,
+    body('area_solicitante')
+      .optional({ nullable: true })
+      .trim()
+      .isLength({ max: 20 })
+      .withMessage('El area solicitante no puede superar 20 caracteres'),
+    body('programa_poa')
+      .optional({ nullable: true })
+      .trim()
+      .isLength({ max: 10 })
+      .withMessage('El programa POA no puede superar 10 caracteres'),
+    body('nro_csa')
+      .optional({ nullable: true })
+      .trim()
+      .isLength({ max: 10 })
+      .withMessage('El numero CSA no puede superar 10 caracteres'),
+    body('observaciones')
+      .optional({ nullable: true })
+      .trim()
+      .isLength({ max: 255 })
+      .withMessage('Las observaciones no pueden superar 255 caracteres')
+  ],
+  validarCampos,
+  actualizarSalida
+);
+
+router.patch(
+  '/:id/recepcion',
+  [
+    validarId,
+    body('recibido_conforme')
+      .optional()
+      .isBoolean()
+      .withMessage('recibido_conforme debe ser true o false')
+      .toBoolean(),
+    body('fecha_recepcion')
+      .optional()
+      .isISO8601()
+      .withMessage('La fecha de recepcion debe tener formato ISO 8601')
+      .toDate()
+      .custom((fecha) => {
+        // Tolerancia de 5 minutos por diferencias de reloj entre el cliente y el servidor.
+        if (fecha.getTime() > Date.now() + 5 * 60 * 1000) {
+          throw new Error('La fecha de recepcion no puede ser futura');
+        }
+
+        return true;
+      }),
+    body('comprobante_documento_id')
+      .optional({ nullable: true })
+      .isUUID()
+      .withMessage('El comprobante debe ser un UUID de documento valido')
+  ],
+  validarCampos,
+  registrarRecepcion
+);
+
+router.post('/:id/anular', validarId, validarMotivoAnulacion, validarCampos, anularSalida);
 
 export default router;

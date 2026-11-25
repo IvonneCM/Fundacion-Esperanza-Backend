@@ -1,3 +1,19 @@
+const METODOS_DE_LECTURA = ['GET', 'HEAD'];
+
+// Como validarRol, pero solo exige el rol en las peticiones que escriben: las lecturas
+// (GET, HEAD) las puede hacer cualquier usuario autenticado.
+export const validarRolEscritura = (...rolesPermitidos) => {
+  const validar = validarRol(...rolesPermitidos);
+
+  return (req, res, next) => {
+    if (METODOS_DE_LECTURA.includes(req.method)) {
+      return next();
+    }
+
+    return validar(req, res, next);
+  };
+};
+
 export const validarRol = (...rolesPermitidos) => {
   return (req, res, next) => {
     try {

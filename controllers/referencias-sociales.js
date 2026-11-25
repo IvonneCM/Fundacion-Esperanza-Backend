@@ -1,6 +1,8 @@
+import { sequelize } from '../config/database.js';
 import ReferenciaSocialDatos from '../models/ReferenciaSocialDatos.js';
 import { obtenerDocumentoDeTipo } from '../utils/documento-tipo.js';
 import { responderError } from '../utils/responder-error.js';
+import { aplicarEstadoDocumento, documentoConEstado } from '../utils/validacion-documentos.js';
 
 const CAMPOS_REFERENCIA = [
   'cite',
@@ -79,29 +81,38 @@ export const putReferenciaSocial = async (req, res) => {
     }
 
     const datos = filtrarDatos(req.body);
-    const referencia = await ReferenciaSocialDatos.findOne({
-      where: { documento_id: documento.id }
-    });
 
-    if (referencia) {
-      await referencia.update(datos);
-
-      return res.json({
-        ok: true,
-        msg: 'Referencia social actualizada',
-        referencia
+    // Guardar a mano deja el documento validado (design.md §10.1); va en la misma transaccion.
+    const { referencia, creada } = await sequelize.transaction(async (transaccion) => {
+      const existente = await ReferenciaSocialDatos.findOne({
+        where: { documento_id: documento.id },
+        transaction: transaccion
       });
-    }
 
-    const nueva = await ReferenciaSocialDatos.create({
-      ...datos,
-      documento_id: documento.id
+      let guardada;
+
+      if (existente) {
+        guardada = await existente.update(datos, { transaction: transaccion });
+      } else {
+        guardada = await ReferenciaSocialDatos.create(
+          {
+            ...datos,
+            documento_id: documento.id
+          },
+          { transaction: transaccion }
+        );
+      }
+
+      await aplicarEstadoDocumento(documento, 'validado', req.usuario, transaccion);
+
+      return { referencia: guardada, creada: !existente };
     });
 
-    return res.status(201).json({
+    return res.status(creada ? 201 : 200).json({
       ok: true,
-      msg: 'Referencia social creada',
-      referencia: nueva
+      msg: creada ? 'Referencia social creada' : 'Referencia social actualizada',
+      referencia,
+      documento: documentoConEstado(documento)
     });
   } catch (error) {
     responderError(res, error);

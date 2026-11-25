@@ -16,8 +16,15 @@ export const inicioDelDia = (fecha) => new Date(`${fecha}T00:00:00.000${DESFASE}
 // 'YYYY-MM-DD' -> ultimo instante de ese dia en La Paz.
 export const finDelDia = (fecha) => new Date(`${fecha}T23:59:59.999${DESFASE}`);
 
-// Instante -> 'YYYY-MM-DD' segun el calendario de La Paz.
-export const fechaLocal = (instante) => formatoFecha.format(new Date(instante));
+// Instante -> 'YYYY-MM-DD' segun el calendario de La Paz. Sin instante (lote sin fecha de
+// vencimiento) devuelve null.
+export const fechaLocal = (instante) => {
+  if (instante === null || instante === undefined) {
+    return null;
+  }
+
+  return formatoFecha.format(new Date(instante));
+};
 
 // 'YYYY-MM-DD' + n dias -> 'YYYY-MM-DD' (calendario puro, sin zonas horarias).
 export const sumarDias = (fecha, dias) => {

@@ -20,6 +20,11 @@ import {
   puedeVerDocumento,
   puedeVerPendientes
 } from '../utils/visibilidad-documentos.js';
+import {
+  aplicarEstadoDocumento,
+  contarFilasPorEstado,
+  recalcularDocumento
+} from '../utils/validacion-documentos.js';
 
 const EXTENSIONES_PERMITIDAS = ['jpg', 'jpeg', 'png', 'pdf'];
 const EXTENSION_POR_MIME = {
@@ -33,6 +38,22 @@ const MODELO_POR_TIPO_TABULAR = {
   ALMUERZOS: AlmuerzoRegistro,
   SALIDAS: SalidaEntradaRegistro,
   TICKETS: TicketTransporteRegistro
+};
+
+const resumenFilas = async (modeloFilas, documentoId) => {
+  const [total, validadas] = await Promise.all([
+    modeloFilas.count({
+      where: { documento_id: documentoId }
+    }),
+    modeloFilas.count({
+      where: {
+        documento_id: documentoId,
+        estado_fila_validacion: 'validado'
+      }
+    })
+  ]);
+
+  return { total, validadas };
 };
 
 const BUSQUEDAS_METADATOS = [
@@ -299,19 +320,7 @@ export const getDocumento = async (req, res) => {
       : null;
 
     if (modeloFilas) {
-      const [total, validadas] = await Promise.all([
-        modeloFilas.count({
-          where: { documento_id: documento.id }
-        }),
-        modeloFilas.count({
-          where: {
-            documento_id: documento.id,
-            estado_fila_validacion: 'validado'
-          }
-        })
-      ]);
-
-      detalle.filas = { total, validadas };
+      detalle.filas = await resumenFilas(modeloFilas, documento.id);
     }
 
     return res.json({
@@ -440,11 +449,74 @@ export const actualizarCodigo = async (req, res) => {
   }
 };
 
+// RF-08: aprobar, rechazar o devolver a pendiente el documento completo (design.md §10.1).
+// En un documento tabular con filas, el estado se aplica a todas ellas y el documento se
+// recalcula; sin filas (o en los demas tipos) se aplica directo al documento.
+export const cambiarEstadoDocumento = async (req, res) => {
+  try {
+    const estado = req.body.estado;
+
+    const documento = await Documento.findByPk(req.params.id, {
+      include: [
+        {
+          model: TipoDocumento,
+          as: 'tipoDocumento',
+          attributes: ['id', 'nombre_tipo', 'codigo']
+        }
+      ]
+    });
+
+    if (!documento) {
+      return res.status(404).json({ ok: false, msg: 'Documento no encontrado' });
+    }
+
+    const modeloFilas = documento.tipoDocumento
+      ? MODELO_POR_TIPO_TABULAR[documento.tipoDocumento.codigo]
+      : null;
+
+    await sequelize.transaction(async (transaccion) => {
+      if (modeloFilas) {
+        await modeloFilas.update(
+          { estado_fila_validacion: estado },
+          {
+            where: { documento_id: documento.id },
+            transaction: transaccion
+          }
+        );
+
+        const { total } = await contarFilasPorEstado(modeloFilas, documento.id, transaccion);
+
+        if (total > 0) {
+          await recalcularDocumento(documento, modeloFilas, req.usuario, transaccion);
+          return;
+        }
+      }
+
+      await aplicarEstadoDocumento(documento, estado, req.usuario, transaccion);
+    });
+
+    const detalle = documentoListado(documento);
+
+    if (modeloFilas) {
+      detalle.filas = await resumenFilas(modeloFilas, documento.id);
+    }
+
+    return res.json({
+      ok: true,
+      msg: 'Estado de validacion actualizado',
+      documento: detalle
+    });
+  } catch (error) {
+    responderError(res, error);
+  }
+};
+
 export default {
   getDocumentos,
   getResumen,
   getDocumento,
   getArchivoDocumento,
   crearDocumento,
-  actualizarCodigo
+  actualizarCodigo,
+  cambiarEstadoDocumento
 };

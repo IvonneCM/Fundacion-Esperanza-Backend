@@ -80,7 +80,7 @@ const stockDisponibleHoy = () => {
     SELECT COALESCE(SUM(l.cantidad_actual), 0)
     FROM inventario_almacen_lote AS l
     WHERE l.producto_id = "InventarioAlmacenProducto"."id"
-      AND l.fecha_expiracion >= ${sequelize.escape(desde)}
+      AND (l.fecha_expiracion IS NULL OR l.fecha_expiracion >= ${sequelize.escape(desde)})
   )`);
 };
 

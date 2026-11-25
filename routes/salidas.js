@@ -66,7 +66,30 @@ const validarDatosSalida = [
   body('detalles.*.inventario_almacen_lote_id')
     .optional({ nullable: true })
     .isUUID()
-    .withMessage('El lote debe ser un UUID valido')
+    .withMessage('El lote debe ser un UUID valido'),
+  body('detalles.*.confirmar_vencido')
+    .optional({ nullable: true })
+    .isBoolean()
+    .withMessage('confirmar_vencido debe ser verdadero o falso')
+    .toBoolean(),
+  body('detalles.*.motivo_vencido')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: 255 })
+    .withMessage('El motivo no puede superar 255 caracteres'),
+  body('detalles').custom((detalles) => {
+    if (!Array.isArray(detalles)) {
+      return true;
+    }
+
+    for (const [indice, item] of detalles.entries()) {
+      if (item.confirmar_vencido === true && !item.motivo_vencido) {
+        throw new Error(`Item ${indice + 1}: indique motivo_vencido para sacar un lote vencido`);
+      }
+    }
+
+    return true;
+  })
 ];
 
 /**
@@ -162,8 +185,11 @@ const validarDatosSalida = [
  *       ocurre en una sola transaccion: si cualquier item falla, no se descuenta nada.
  *       Las cantidades van en unidad base (la `unidad_medida` del producto, ej. kg). Sin
  *       `inventario_almacen_lote_id` se aplica FEFO: sale primero el lote que vence antes,
- *       sin contar los vencidos, repartiendo entre varios lotes si hace falta. Con lote
- *       indicado se usa ese, siempre que sea del mismo producto, no este vencido y alcance.
+ *       sin contar los vencidos, repartiendo entre varios lotes si hace falta; los lotes sin
+ *       fecha de vencimiento (SFV) salen al final. Con lote indicado se usa ese, siempre que
+ *       sea del mismo producto y alcance. Si esta vencido responde 409 indicando cuantos dias
+ *       lleva vencido; se puede sacar enviando `confirmar_vencido: true` y `motivo_vencido`
+ *       en ese item, y el detalle de la salida guarda `dias_vencido` y `motivo_vencido`.
  *       Los ajustes por conteo no se crean aqui, sino con `POST /api/lotes/{id}/ajuste`.
  *     security:
  *       - bearerAuth: []
@@ -213,7 +239,7 @@ const validarDatosSalida = [
  *             schema:
  *               $ref: '#/components/schemas/Error'
  *       409:
- *         description: Stock insuficiente, o el lote indicado esta vencido. No se descuenta nada.
+ *         description: Stock insuficiente, o el lote indicado esta vencido sin confirmar. No se descuenta nada.
  *         content:
  *           application/json:
  *             schema:

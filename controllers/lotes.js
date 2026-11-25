@@ -9,7 +9,7 @@ import {
   InventarioAlmacenProducto
 } from '../models/index.js';
 import { ErrorNegocio } from '../utils/error-negocio.js';
-import { fechaLocal, finDelDia, sumarDias } from '../utils/fechas-bolivia.js';
+import { fechaLocal, finDelDia, inicioDelDia, sumarDias } from '../utils/fechas-bolivia.js';
 import {
   loteAlertaPublico,
   lotePublico,
@@ -311,6 +311,55 @@ export const ajustarLote = async (req, res) => {
   }
 };
 
+// Corrige la fecha de vencimiento (o la deja sin fecha) y las notas de un lote. Nunca toca
+// cantidades: esas solo cambian por movimientos o ajustes. Los detalles de ingreso ya
+// registrados no se modifican (design.md §10.3).
+export const actualizarLote = async (req, res) => {
+  try {
+    const cuerpo = req.body;
+    const cambios = {};
+
+    if (cuerpo.fecha_expiracion !== undefined) {
+      cambios.fecha_expiracion = cuerpo.fecha_expiracion
+        ? inicioDelDia(cuerpo.fecha_expiracion)
+        : null;
+    }
+
+    if (cuerpo.notas !== undefined) {
+      cambios.notas = cuerpo.notas || null;
+    }
+
+    if (Object.keys(cambios).length === 0) {
+      return res.status(400).json({
+        ok: false,
+        msg: 'Indique fecha_expiracion o notas'
+      });
+    }
+
+    const lote = await InventarioAlmacenLote.findByPk(req.params.id, {
+      include: [INCLUIR_PRODUCTO]
+    });
+
+    if (!lote) {
+      return res.status(404).json({ ok: false, msg: 'Lote no encontrado' });
+    }
+
+    await lote.update(cambios);
+
+    return res.json({
+      ok: true,
+      msg: 'Lote actualizado',
+      lote: loteConProductoPublico(lote)
+    });
+  } catch (error) {
+    responderError(res, error);
+  }
+};
+
 export default {
-  ajustarLote
+  getLotes,
+  getLotesPorVencer,
+  getLote,
+  ajustarLote,
+  actualizarLote
 };

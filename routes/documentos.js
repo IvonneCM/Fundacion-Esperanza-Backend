@@ -6,7 +6,8 @@ import {
   getDocumento,
   getArchivoDocumento,
   crearDocumento,
-  actualizarCodigo
+  actualizarCodigo,
+  cambiarEstadoDocumento
 } from '../controllers/documentos.js';
 import { ESTADOS_OCR, ESTADOS_VALIDACION } from '../models/Documento.js';
 import { validarCampos } from '../middlewares/validar-campos.js';
@@ -33,8 +34,9 @@ router.use('/tipos', tiposDocumentosRouter);
  *     tags: [Documentos]
  *     summary: Listar, buscar y paginar documentos
  *     description: >
- *       Disponible para todos los roles. `visitante` solo ve documentos con
- *       `estado_validacion='validado'` (el servidor fuerza el filtro). `q` busca
+ *       Disponible para todos los roles, sin filtrar por estado de validacion
+ *       (el visitante tambien ve lo no validado; `estado_validacion` es un filtro
+ *       opcional). `q` busca
  *       en `codigo`, `texto_ocr` y en los nombres de paciente de los metadatos
  *       (ficha, referencia, almuerzos, salidas/entradas y tickets).
  *       Orden: `fecha_registro` descendente.
@@ -334,6 +336,61 @@ router.patch(
   actualizarCodigo
 );
 
+/**
+ * @openapi
+ * /api/documentos/{id}/validacion:
+ *   patch:
+ *     tags: [Documentos]
+ *     summary: Cambiar el estado de validacion de un documento
+ *     description: >
+ *       RF-08. Aprueba, rechaza o devuelve a pendiente el documento completo. En un
+ *       documento tabular con filas, el estado se aplica a todas sus filas y el documento se
+ *       recalcula; en los demas casos (registro unico, sin filas, tipos sin metadatos) se
+ *       aplica directo al documento. Solo `admin` y `archivista`. Los metadatos guardados
+ *       a mano ya dejan el documento validado sin pasar por aqui.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [estado]
+ *             properties:
+ *               estado:
+ *                 type: string
+ *                 enum: [pendiente, validado, rechazado]
+ *     responses:
+ *       200:
+ *         description: Documento con su estado actualizado (y `filas` si es tabular).
+ *       400:
+ *         description: Id o estado invalido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorValidacion'
+ *       403:
+ *         description: Rol sin permiso de escritura.
+ *       404:
+ *         description: Documento no encontrado.
+ */
+router.patch(
+  '/:id/validacion',
+  validarRol('admin', 'archivista'),
+  param('id').isUUID().withMessage('El id del documento debe ser un UUID valido'),
+  body('estado').isIn(ESTADOS_VALIDACION).withMessage(`El estado debe ser uno de: ${ESTADOS_VALIDACION.join(', ')}`),
+  validarCampos,
+  cambiarEstadoDocumento
+);
+
 router.use('/:id/ficha-social', fichasSocialesRouter);
 router.use('/:id/referencia-social', referenciasSocialesRouter);
 router.use('/:id/almuerzos', almuerzosRouter);
@@ -348,8 +405,8 @@ router.use('/:id/tickets', ticketsTransporteRouter);
  *     summary: Conteos por tipo de documento
  *     description: >
  *       Disponible para todos los roles. Devuelve los tipos del catalogo aunque
- *       no tengan documentos. Para `visitante` el `total` cuenta solo documentos
- *       validados y `por_validar` se omite. `por_validar` cuenta los documentos
+ *       no tengan documentos. Todos los roles reciben `total` y `por_validar`
+ *       completos. `por_validar` cuenta los documentos
  *       con `estado_validacion='pendiente'` (los rechazados no cuentan).
  *     security:
  *       - bearerAuth: []
@@ -386,9 +443,8 @@ router.get('/resumen', getResumen);
  *     tags: [Documentos]
  *     summary: Detalle de un documento
  *     description: >
- *       Disponible para todos los roles. `visitante` solo puede ver documentos con
- *       `estado_validacion='validado'`; si no lo esta, responde 404 para no revelar
- *       que existe. No incrusta metadatos: se consultan con los subrecursos.
+ *       Disponible para todos los roles, sin importar el estado de validacion.
+ *       No incrusta metadatos: se consultan con los subrecursos.
  *       Para tipos tabulares (`ALMUERZOS`, `SALIDAS`, `TICKETS`) agrega
  *       `filas: { total, validadas }`.
  *     security:

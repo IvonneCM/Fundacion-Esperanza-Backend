@@ -14,6 +14,12 @@ const controlador = crearControladorFilas({
   ]
 });
 
-export const { getFilas, crearFila, actualizarFila, eliminarFila } = controlador;
+export const {
+  getFilas,
+  crearFila,
+  actualizarFila,
+  eliminarFila,
+  cambiarEstadoFila
+} = controlador;
 
 export default controlador;

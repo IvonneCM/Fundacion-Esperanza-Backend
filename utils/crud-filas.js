@@ -1,5 +1,7 @@
+import { sequelize } from '../config/database.js';
 import { obtenerDocumentoDeTipo } from './documento-tipo.js';
 import { responderError } from './responder-error.js';
+import { documentoConEstado, recalcularDocumento } from './validacion-documentos.js';
 
 export const crearControladorFilas = ({
   modelo,
@@ -35,6 +37,16 @@ export const crearControladorFilas = ({
     return resultado.documento;
   };
 
+  const buscarFila = (documento, filaId, transaccion) => {
+    return modelo.findOne({
+      where: {
+        id: filaId,
+        documento_id: documento.id
+      },
+      transaction: transaccion
+    });
+  };
+
   const getFilas = async (req, res) => {
     try {
       const documento = await verificarDocumento(req, res);
@@ -65,6 +77,7 @@ export const crearControladorFilas = ({
     }
   };
 
+  // Una fila escrita a mano queda validada y el documento se recalcula (design.md §10.1).
   const crearFila = async (req, res) => {
     try {
       const documento = await verificarDocumento(req, res);
@@ -74,26 +87,39 @@ export const crearControladorFilas = ({
       }
 
       const datos = filtrarDatos(req.body);
-      let fila_numero = req.body.fila_numero;
 
-      if (fila_numero === undefined) {
-        const maximo = await modelo.max('fila_numero', {
-          where: { documento_id: documento.id }
-        });
+      const fila = await sequelize.transaction(async (transaccion) => {
+        let fila_numero = req.body.fila_numero;
 
-        fila_numero = Number.isInteger(maximo) ? maximo + 1 : 1;
-      }
+        if (fila_numero === undefined) {
+          const maximo = await modelo.max('fila_numero', {
+            where: { documento_id: documento.id },
+            transaction: transaccion
+          });
 
-      const fila = await modelo.create({
-        ...datos,
-        fila_numero,
-        documento_id: documento.id
+          fila_numero = Number.isInteger(maximo) ? maximo + 1 : 1;
+        }
+
+        const nueva = await modelo.create(
+          {
+            ...datos,
+            fila_numero,
+            documento_id: documento.id,
+            estado_fila_validacion: 'validado'
+          },
+          { transaction: transaccion }
+        );
+
+        await recalcularDocumento(documento, modelo, req.usuario, transaccion);
+
+        return nueva;
       });
 
       return res.status(201).json({
         ok: true,
         msg: `${nombreRecurso} creado`,
-        fila
+        fila,
+        documento: documentoConEstado(documento)
       });
     } catch (error) {
       responderError(res, error);
@@ -108,23 +134,35 @@ export const crearControladorFilas = ({
         return;
       }
 
-      const fila = await modelo.findOne({
-        where: {
-          id: req.params.filaId,
-          documento_id: documento.id
+      const fila = await sequelize.transaction(async (transaccion) => {
+        const existente = await buscarFila(documento, req.params.filaId, transaccion);
+
+        if (!existente) {
+          return null;
         }
+
+        await existente.update(
+          {
+            ...filtrarDatos(req.body),
+            estado_fila_validacion: 'validado'
+          },
+          { transaction: transaccion }
+        );
+
+        await recalcularDocumento(documento, modelo, req.usuario, transaccion);
+
+        return existente;
       });
 
       if (!fila) {
         return res.status(404).json({ ok: false, msg: `${nombreRecurso} no encontrado` });
       }
 
-      await fila.update(filtrarDatos(req.body));
-
       return res.json({
         ok: true,
         msg: `${nombreRecurso} actualizado`,
-        fila
+        fila,
+        documento: documentoConEstado(documento)
       });
     } catch (error) {
       responderError(res, error);
@@ -139,22 +177,68 @@ export const crearControladorFilas = ({
         return;
       }
 
-      const fila = await modelo.findOne({
-        where: {
-          id: req.params.filaId,
-          documento_id: documento.id
+      const eliminada = await sequelize.transaction(async (transaccion) => {
+        const existente = await buscarFila(documento, req.params.filaId, transaccion);
+
+        if (!existente) {
+          return false;
         }
+
+        await existente.destroy({ transaction: transaccion });
+        await recalcularDocumento(documento, modelo, req.usuario, transaccion);
+
+        return true;
+      });
+
+      if (!eliminada) {
+        return res.status(404).json({ ok: false, msg: `${nombreRecurso} no encontrado` });
+      }
+
+      return res.json({
+        ok: true,
+        msg: `${nombreRecurso} eliminado`,
+        documento: documentoConEstado(documento)
+      });
+    } catch (error) {
+      responderError(res, error);
+    }
+  };
+
+  // RF-08: aprobar, rechazar o volver a pendiente una fila. El documento se recalcula.
+  const cambiarEstadoFila = async (req, res) => {
+    try {
+      const documento = await verificarDocumento(req, res);
+
+      if (!documento) {
+        return;
+      }
+
+      const fila = await sequelize.transaction(async (transaccion) => {
+        const existente = await buscarFila(documento, req.params.filaId, transaccion);
+
+        if (!existente) {
+          return null;
+        }
+
+        await existente.update(
+          { estado_fila_validacion: req.body.estado },
+          { transaction: transaccion }
+        );
+
+        await recalcularDocumento(documento, modelo, req.usuario, transaccion);
+
+        return existente;
       });
 
       if (!fila) {
         return res.status(404).json({ ok: false, msg: `${nombreRecurso} no encontrado` });
       }
 
-      await fila.destroy();
-
       return res.json({
         ok: true,
-        msg: `${nombreRecurso} eliminado`
+        msg: `Estado de validacion de ${nombreRecurso.toLowerCase()} actualizado`,
+        fila,
+        documento: documentoConEstado(documento)
       });
     } catch (error) {
       responderError(res, error);
@@ -165,7 +249,8 @@ export const crearControladorFilas = ({
     getFilas,
     crearFila,
     actualizarFila,
-    eliminarFila
+    eliminarFila,
+    cambiarEstadoFila
   };
 };
 

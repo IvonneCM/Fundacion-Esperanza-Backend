@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { body } from 'express-validator';
-import { login, perfil } from '../controllers/auth.js';
+import { login, perfil, actualizarPerfil } from '../controllers/auth.js';
 import { validarCampos } from '../middlewares/validar-campos.js';
 import { validarJWT } from '../middlewares/validar-jwt.js';
 
@@ -134,5 +134,96 @@ router.post(
  *               $ref: '#/components/schemas/Error'
  */
 router.get('/perfil', validarJWT, perfil);
+
+/**
+ * @openapi
+ * /api/auth/perfil:
+ *   patch:
+ *     tags: [Auth]
+ *     summary: Editar el propio perfil
+ *     description: >
+ *       Cualquier rol autenticado edita su propio `nombre`, `apellido` y `email` (al menos
+ *       uno). El email se guarda en minusculas. No cambia rol, estado ni contrasena. El token
+ *       emitido sigue siendo valido.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               nombre:
+ *                 type: string
+ *                 maxLength: 100
+ *               apellido:
+ *                 type: string
+ *                 maxLength: 100
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 maxLength: 150
+ *     responses:
+ *       200:
+ *         description: Perfil actualizado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                 usuario:
+ *                   $ref: '#/components/schemas/Usuario'
+ *       400:
+ *         description: Campos invalidos o ninguno enviado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorValidacion'
+ *       401:
+ *         description: Sin token o token invalido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       409:
+ *         description: El email ya lo usa otra cuenta.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.patch(
+  '/perfil',
+  validarJWT,
+  body('nombre')
+    .optional()
+    .trim()
+    .notEmpty()
+    .withMessage('El nombre no puede quedar vacio')
+    .isLength({ max: 100 })
+    .withMessage('El nombre no puede superar 100 caracteres'),
+  body('apellido')
+    .optional()
+    .trim()
+    .notEmpty()
+    .withMessage('El apellido no puede quedar vacio')
+    .isLength({ max: 100 })
+    .withMessage('El apellido no puede superar 100 caracteres'),
+  body('email')
+    .optional()
+    .trim()
+    .isEmail()
+    .withMessage('El email no es valido')
+    .isLength({ max: 150 })
+    .withMessage('El email no puede superar 150 caracteres'),
+  validarCampos,
+  actualizarPerfil
+);
 
 export default router;

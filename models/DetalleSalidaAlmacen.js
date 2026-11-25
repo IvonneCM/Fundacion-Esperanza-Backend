@@ -20,6 +20,15 @@ const DetalleSalidaAlmacen = sequelize.define(
     salida_almacen_id: {
       type: DataTypes.UUID,
       allowNull: false
+    },
+    // Solo cuando se saco un lote vencido con confirmacion (design.md 10.2).
+    dias_vencido: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
+    motivo_vencido: {
+      type: DataTypes.STRING(255),
+      allowNull: true
     }
   },
   {

@@ -106,10 +106,14 @@ const prepararItems = async (items, transaccion) => {
         throw new ErrorNegocio(400, `${posicion}: el lote pertenece a otro producto`);
       }
 
-      if (fechaLocal(lote.fecha_expiracion) !== item.fecha_expiracion) {
+      // Sin fecha (SFV) cuenta como una fecha mas: dos lotes SFV son el mismo lote.
+      const fechaDelLote = fechaLocal(lote.fecha_expiracion);
+      const fechaDelItem = item.fecha_expiracion ?? null;
+
+      if (fechaDelLote !== fechaDelItem) {
         throw new ErrorNegocio(
           400,
-          `${posicion}: la fecha de vencimiento no coincide con la del lote (${fechaLocal(lote.fecha_expiracion)}); si es otra fecha, es otro lote`
+          `${posicion}: la fecha de vencimiento no coincide con la del lote (${fechaDelLote ?? 'sin fecha'}); si es otra fecha, es otro lote`
         );
       }
     }
@@ -281,7 +285,7 @@ export const crearIngreso = async (req, res) => {
               unidad_medida: producto.unidad_medida,
               precio_unitario_usd: precio,
               notas: item.notas ?? null,
-              fecha_expiracion: inicioDelDia(item.fecha_expiracion),
+              fecha_expiracion: item.fecha_expiracion ? inicioDelDia(item.fecha_expiracion) : null,
               fecha_inventario_inicial: fechaIngreso
             },
             { transaction: transaccion }
@@ -293,7 +297,7 @@ export const crearIngreso = async (req, res) => {
             cantidad_ingresada: cantidadBase,
             precio_unitario_usd: precio,
             precio_unitario_bs: item.precio_unitario_bs ?? null,
-            fecha_expiracion: item.fecha_expiracion,
+            fecha_expiracion: item.fecha_expiracion ?? null,
             ingreso_almacen_id: ingreso.id,
             inventario_almacen_lote_id: loteDestino.id
           },

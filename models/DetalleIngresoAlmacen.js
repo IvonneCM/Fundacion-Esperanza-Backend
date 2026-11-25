@@ -21,9 +21,10 @@ const DetalleIngresoAlmacen = sequelize.define(
       type: DataTypes.DECIMAL(12, 4),
       allowNull: true
     },
+    // null = sin fecha de vencimiento (SFV)
     fecha_expiracion: {
       type: DataTypes.DATEONLY,
-      allowNull: false
+      allowNull: true
     },
     ingreso_almacen_id: {
       type: DataTypes.UUID,

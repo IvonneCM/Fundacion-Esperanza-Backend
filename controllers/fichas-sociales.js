@@ -1,7 +1,9 @@
+import { sequelize } from '../config/database.js';
 import FichaSocialDatos from '../models/FichaSocialDatos.js';
 import FichaSocialGrupoFamiliar from '../models/FichaSocialGrupoFamiliar.js';
 import { obtenerDocumentoDeTipo } from '../utils/documento-tipo.js';
 import { responderError } from '../utils/responder-error.js';
+import { aplicarEstadoDocumento, documentoConEstado } from '../utils/validacion-documentos.js';
 
 const CAMPOS_FICHA = [
   'nombre_paciente',
@@ -110,29 +112,38 @@ export const putFichaSocial = async (req, res) => {
     }
 
     const datos = filtrarDatos(req.body, CAMPOS_FICHA);
-    const ficha = await FichaSocialDatos.findOne({
-      where: { documento_id: documento.id }
-    });
 
-    if (ficha) {
-      await ficha.update(datos);
-
-      return res.json({
-        ok: true,
-        msg: 'Ficha social actualizada',
-        ficha
+    // Guardar a mano deja el documento validado (design.md §10.1); va en la misma transaccion.
+    const { ficha, creada } = await sequelize.transaction(async (transaccion) => {
+      const existente = await FichaSocialDatos.findOne({
+        where: { documento_id: documento.id },
+        transaction: transaccion
       });
-    }
 
-    const nueva = await FichaSocialDatos.create({
-      ...datos,
-      documento_id: documento.id
+      let guardada;
+
+      if (existente) {
+        guardada = await existente.update(datos, { transaction: transaccion });
+      } else {
+        guardada = await FichaSocialDatos.create(
+          {
+            ...datos,
+            documento_id: documento.id
+          },
+          { transaction: transaccion }
+        );
+      }
+
+      await aplicarEstadoDocumento(documento, 'validado', req.usuario, transaccion);
+
+      return { ficha: guardada, creada: !existente };
     });
 
-    return res.status(201).json({
+    return res.status(creada ? 201 : 200).json({
       ok: true,
-      msg: 'Ficha social creada',
-      ficha: nueva
+      msg: creada ? 'Ficha social creada' : 'Ficha social actualizada',
+      ficha,
+      documento: documentoConEstado(documento)
     });
   } catch (error) {
     responderError(res, error);

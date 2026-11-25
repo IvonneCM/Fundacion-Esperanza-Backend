@@ -85,12 +85,13 @@ export const loteConProductoPublico = (lote) => {
 
 // Para la alerta de vencimientos: dias_para_vencer es negativo si ya vencio.
 export const loteAlertaPublico = (lote, hoy) => {
-  const diasParaVencer = diasEntre(hoy, fechaLocal(lote.fecha_expiracion));
+  const vence = fechaLocal(lote.fecha_expiracion);
+  const diasParaVencer = vence ? diasEntre(hoy, vence) : null;
 
   return {
     ...loteConProductoPublico(lote),
     dias_para_vencer: diasParaVencer,
-    vencido: diasParaVencer < 0
+    vencido: diasParaVencer !== null && diasParaVencer < 0
   };
 };
 
@@ -182,7 +183,9 @@ export const detalleSalidaPublico = (detalle) => {
     lote_id: detalle.inventario_almacen_lote_id,
     fecha_expiracion: lote ? fechaLocal(lote.fecha_expiracion) : null,
     cantidad_base: cantidadBase,
-    cantidad_presentaciones: contenido > 0 ? redondear(cantidadBase / contenido) : null
+    cantidad_presentaciones: contenido > 0 ? redondear(cantidadBase / contenido) : null,
+    dias_vencido: aNumero(detalle.dias_vencido),
+    motivo_vencido: detalle.motivo_vencido ?? null
   };
 };
 

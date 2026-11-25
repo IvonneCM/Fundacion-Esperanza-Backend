@@ -38,9 +38,10 @@ const InventarioAlmacenLote = sequelize.define(
       type: DataTypes.STRING(255),
       allowNull: true
     },
+    // null = sin fecha de vencimiento (SFV)
     fecha_expiracion: {
       type: DataTypes.DATE,
-      allowNull: false
+      allowNull: true
     },
     fecha_inventario_inicial: {
       type: DataTypes.DATE,

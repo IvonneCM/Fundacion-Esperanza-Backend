@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { body, param, query } from 'express-validator';
 import {
+  actualizarLote,
   ajustarLote,
   getLotes,
   getLotesPorVencer,
@@ -397,5 +398,87 @@ router.get('/:id', validarId, validarCampos, getLote);
  *               $ref: '#/components/schemas/Error'
  */
 router.post('/:id/ajuste', validarId, validarAjuste, validarCampos, ajustarLote);
+
+/**
+ * @openapi
+ * /api/lotes/{id}:
+ *   patch:
+ *     tags: [Inventario]
+ *     summary: Corregir la fecha de vencimiento o las notas de un lote
+ *     description: >
+ *       Solo administradores. Permite corregir `fecha_expiracion` (o dejar el lote sin fecha
+ *       enviando `null`) y las `notas`. Nunca modifica cantidades: esas cambian solo por
+ *       ingresos, salidas o ajustes por conteo. Los ingresos ya registrados conservan la
+ *       fecha que declararon. Hay que enviar al menos un campo.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               fecha_expiracion:
+ *                 type: string
+ *                 format: date
+ *                 nullable: true
+ *                 example: '2027-03-31'
+ *               notas:
+ *                 type: string
+ *                 nullable: true
+ *                 maxLength: 255
+ *     responses:
+ *       200:
+ *         description: Lote actualizado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                 lote:
+ *                   $ref: '#/components/schemas/LoteInventario'
+ *       400:
+ *         description: Fecha invalida o no se envio ningun campo.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorValidacion'
+ *       403:
+ *         description: El rol del usuario no es admin.
+ *       404:
+ *         description: Lote no encontrado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.patch(
+  '/:id',
+  validarId,
+  body('fecha_expiracion')
+    .optional({ nullable: true })
+    .isDate({ format: 'YYYY-MM-DD', strictMode: true })
+    .withMessage('La fecha de vencimiento debe tener formato YYYY-MM-DD'),
+  body('notas')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: 255 })
+    .withMessage('Las notas no pueden superar 255 caracteres'),
+  validarCampos,
+  actualizarLote
+);
 
 export default router;

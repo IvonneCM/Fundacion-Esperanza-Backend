@@ -390,12 +390,15 @@ const definicion = {
           },
           fecha_expiracion: {
             type: 'string',
-            format: 'date-time'
+            format: 'date-time',
+            nullable: true,
+            description: 'null = sin fecha de vencimiento (SFV).'
           },
           vence_el: {
             type: 'string',
             format: 'date',
-            description: 'Fecha de vencimiento en calendario de La Paz.',
+            nullable: true,
+            description: 'Fecha de vencimiento en calendario de La Paz. null = SFV.',
             example: '2027-03-31'
           },
           fecha_inventario_inicial: {
@@ -444,7 +447,8 @@ const definicion = {
             properties: {
               dias_para_vencer: {
                 type: 'integer',
-                description: 'Negativo si ya vencio.',
+                nullable: true,
+                description: 'Negativo si ya vencio. null si el lote no tiene fecha (SFV); esos lotes no aparecen en la alerta.',
                 example: 12
               },
               vencido: {
@@ -482,7 +486,7 @@ const definicion = {
       },
       IngresoAlmacenItemCrear: {
         type: 'object',
-        required: ['producto_id', 'cantidad_presentaciones', 'fecha_expiracion'],
+        required: ['producto_id', 'cantidad_presentaciones'],
         properties: {
           producto_id: {
             type: 'string',
@@ -509,6 +513,8 @@ const definicion = {
           fecha_expiracion: {
             type: 'string',
             format: 'date',
+            nullable: true,
+            description: 'Opcional. Si se omite o es null, el lote queda sin fecha de vencimiento (SFV).',
             example: '2027-03-31'
           },
           inventario_almacen_lote_id: {
@@ -643,7 +649,8 @@ const definicion = {
           },
           fecha_expiracion: {
             type: 'string',
-            format: 'date'
+            format: 'date',
+            nullable: true
           }
         }
       },
@@ -766,7 +773,16 @@ const definicion = {
             type: 'string',
             format: 'uuid',
             nullable: true,
-            description: 'Opcional. Si se omite, se aplica FEFO. Si se indica, debe ser del mismo producto y no estar vencido.'
+            description: 'Opcional. Si se omite, se aplica FEFO (primero el que vence antes; los lotes sin fecha, al final; nunca uno vencido). Si se indica, debe ser del mismo producto; si esta vencido hace falta confirmar_vencido.'
+          },
+          confirmar_vencido: {
+            type: 'boolean',
+            description: 'Autoriza sacar el lote indicado aunque este vencido. Requiere motivo_vencido. Sin esto, un lote vencido responde 409 con los dias vencidos.'
+          },
+          motivo_vencido: {
+            type: 'string',
+            maxLength: 255,
+            description: 'Obligatorio si confirmar_vencido es true.'
           }
         }
       },
@@ -861,6 +877,15 @@ const definicion = {
           },
           cantidad_presentaciones: {
             type: 'number',
+            nullable: true
+          },
+          dias_vencido: {
+            type: 'integer',
+            nullable: true,
+            description: 'Solo si se saco un lote vencido con confirmacion: dias que llevaba vencido.'
+          },
+          motivo_vencido: {
+            type: 'string',
             nullable: true
           }
         }
@@ -1065,8 +1090,7 @@ const definicion = {
       ResumenTipo: {
         type: 'object',
         description:
-          'Conteo de documentos de un tipo. Para `visitante`, `total` cuenta solo validados y ' +
-          '`por_validar` se omite.',
+          'Conteo de documentos de un tipo. Todos los roles reciben `total` y `por_validar` completos.',
         properties: {
           tipos_documentos_id: {
             type: 'string',

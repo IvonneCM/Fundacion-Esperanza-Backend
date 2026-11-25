@@ -88,6 +88,7 @@ const validarDatosIngreso = [
     .withMessage('El precio (Bs) debe ser un numero mayor a 0')
     .toFloat(),
   body('detalles.*.fecha_expiracion')
+    .optional({ nullable: true })
     .isDate(FORMATO_FECHA)
     .withMessage('La fecha de vencimiento debe tener formato YYYY-MM-DD'),
   body('detalles.*.inventario_almacen_lote_id')
@@ -193,7 +194,7 @@ const validarDatosIngreso = [
  *       Solo administradores. Todo ocurre en una sola transaccion: si cualquier item falla,
  *       no se guarda nada. Por cada item se crea un lote nuevo (por defecto) o se suma a un
  *       lote existente si se indica `inventario_almacen_lote_id`; en ese caso el lote debe
- *       ser del mismo producto y tener la misma fecha de vencimiento, solo sube
+ *       ser del mismo producto y tener la misma fecha de vencimiento (o ambos sin fecha), solo sube
  *       `cantidad_actual` y `cantidad_inicial` no se toca. Las cantidades se envian en
  *       presentaciones y se guardan en unidad base (presentaciones x contenido neto del
  *       producto). El precio es por presentacion; si se omite se usa el del lote o el de

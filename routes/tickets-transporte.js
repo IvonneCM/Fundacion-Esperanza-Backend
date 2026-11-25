@@ -4,15 +4,17 @@ import {
   getFilas,
   crearFila,
   actualizarFila,
-  eliminarFila
+  eliminarFila,
+  cambiarEstadoFila
 } from '../controllers/tickets-transporte.js';
 import { validarCampos } from '../middlewares/validar-campos.js';
 import { validarPaginacion } from '../middlewares/validar-paginacion.js';
-import { validarRol } from '../middlewares/validar-rol.js';
+import { ESTADOS_VALIDACION } from '../models/Documento.js';
+import { validarRolEscritura } from '../middlewares/validar-rol.js';
 
 const router = Router({ mergeParams: true });
 
-router.use(validarRol('admin', 'archivista'));
+router.use(validarRolEscritura('admin', 'archivista'));
 
 const validarDocumento = param('id').isUUID().withMessage('El id del documento debe ser un UUID valido');
 const validarFila = param('filaId').isUUID().withMessage('El id de la fila debe ser un UUID valido');
@@ -187,6 +189,61 @@ router.delete(
   validarFila,
   validarCampos,
   eliminarFila
+);
+
+/**
+ * @openapi
+ * /api/documentos/{id}/tickets/{filaId}/validacion:
+ *   patch:
+ *     tags: [Documentos]
+ *     summary: Cambiar el estado de validacion de una fila
+ *     description: >
+ *       RF-08. Aprueba, rechaza o devuelve a pendiente una fila y recalcula el estado del
+ *       documento: con al menos una fila validada queda validado; si todas estan rechazadas,
+ *       rechazado; en cualquier otro caso, pendiente. Solo admin y archivista.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: path
+ *         name: filaId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [estado]
+ *             properties:
+ *               estado:
+ *                 type: string
+ *                 enum: [pendiente, validado, rechazado]
+ *     responses:
+ *       200:
+ *         description: Fila y estado actualizado del documento.
+ *       400:
+ *         description: Estado invalido o el documento no es de tipo TICKETS.
+ *       403:
+ *         description: Rol sin permiso de escritura.
+ *       404:
+ *         description: Documento o fila no encontrados.
+ */
+router.patch(
+  '/:filaId/validacion',
+  validarDocumento,
+  validarFila,
+  body('estado').isIn(ESTADOS_VALIDACION).withMessage(`El estado debe ser uno de: ${ESTADOS_VALIDACION.join(', ')}`),
+  validarCampos,
+  cambiarEstadoFila
 );
 
 export default router;

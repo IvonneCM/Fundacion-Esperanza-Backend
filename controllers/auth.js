@@ -69,4 +69,55 @@ export const perfil = async (req, res) => {
   }
 };
 
-export default { login, perfil };
+// El usuario autenticado edita sus propios datos basicos (design.md §10.4). No toca rol,
+// estado ni contrasena.
+export const actualizarPerfil = async (req, res) => {
+  try {
+    const { nombre, apellido, email } = req.body;
+    const cambios = {};
+
+    if (nombre !== undefined) {
+      cambios.nombre = nombre;
+    }
+
+    if (apellido !== undefined) {
+      cambios.apellido = apellido;
+    }
+
+    if (email !== undefined) {
+      cambios.email = String(email).trim().toLowerCase();
+    }
+
+    if (Object.keys(cambios).length === 0) {
+      return res.status(400).json({
+        ok: false,
+        msg: 'Indique nombre, apellido o email'
+      });
+    }
+
+    if (cambios.email && cambios.email !== req.usuario.email) {
+      const existente = await Usuario.findOne({ where: { email: cambios.email } });
+
+      if (existente) {
+        return res.status(409).json({ ok: false, msg: 'Ya existe un usuario con ese email' });
+      }
+    }
+
+    await req.usuario.update(cambios);
+
+    return res.json({
+      ok: true,
+      msg: 'Perfil actualizado',
+      usuario: perfilPublico(req.usuario)
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      ok: false,
+      msg: 'Error en el servidor',
+      error: process.env.NODE_ENV === 'production' ? undefined : error.message
+    });
+  }
+};
+
+export default { login, perfil, actualizarPerfil };

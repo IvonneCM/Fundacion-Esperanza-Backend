@@ -10,11 +10,11 @@ import {
 } from '../controllers/fichas-sociales.js';
 import { validarCampos } from '../middlewares/validar-campos.js';
 import { validarPaginacion } from '../middlewares/validar-paginacion.js';
-import { validarRol } from '../middlewares/validar-rol.js';
+import { validarRolEscritura } from '../middlewares/validar-rol.js';
 
 const router = Router({ mergeParams: true });
 
-router.use(validarRol('admin', 'archivista'));
+router.use(validarRolEscritura('admin', 'archivista'));
 
 const validarDocumento = param('id').isUUID().withMessage('El id del documento debe ser un UUID valido');
 const validarFila = param('filaId').isUUID().withMessage('El id de la fila debe ser un UUID valido');

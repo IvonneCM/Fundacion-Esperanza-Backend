@@ -5,11 +5,11 @@ import {
   putReferenciaSocial
 } from '../controllers/referencias-sociales.js';
 import { validarCampos } from '../middlewares/validar-campos.js';
-import { validarRol } from '../middlewares/validar-rol.js';
+import { validarRolEscritura } from '../middlewares/validar-rol.js';
 
 const router = Router({ mergeParams: true });
 
-router.use(validarRol('admin', 'archivista'));
+router.use(validarRolEscritura('admin', 'archivista'));
 
 const validarDocumento = param('id').isUUID().withMessage('El id del documento debe ser un UUID valido');
 

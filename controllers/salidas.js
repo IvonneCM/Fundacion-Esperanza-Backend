@@ -8,7 +8,7 @@ import {
   Usuario
 } from '../models/index.js';
 import { ErrorNegocio } from '../utils/error-negocio.js';
-import { inicioDelDia, finDelDia, fechaLocal } from '../utils/fechas-bolivia.js';
+import { inicioDelDia, finDelDia, fechaLocal, diasEntre } from '../utils/fechas-bolivia.js';
 import { salidaPublico, redondear } from '../utils/inventario-publico.js';
 import { responderError } from '../utils/responder-error.js';
 
@@ -53,12 +53,14 @@ const buscarSalida = (id) => {
 // termina sin haber modificado filas.
 //
 // Sin lote indicado se aplica FEFO: primero el lote que vence antes, sin contar los
-// vencidos, repartiendo entre lotes si hace falta. Con lote indicado se usa ese, pero
-// nunca uno vencido (una salida de consumo no debe servir comida vencida).
+// vencidos, repartiendo entre lotes si hace falta; los lotes sin fecha de vencimiento (SFV)
+// van al final. Con lote indicado se usa ese; si esta vencido solo se permite con
+// confirmar_vencido y motivo_vencido (design.md §10.2), y queda registrado en el detalle.
 const decidirOrigen = async (items, transaccion) => {
   const estado = new Map();
   const asignaciones = [];
-  const desde = inicioDelDia(fechaLocal(new Date()));
+  const hoy = fechaLocal(new Date());
+  const desde = inicioDelDia(hoy);
 
   const registrar = (lote) => {
     if (!estado.has(lote.id)) {
@@ -110,8 +112,24 @@ const decidirOrigen = async (items, transaccion) => {
         throw new ErrorNegocio(400, `${posicion}: el lote pertenece a otro producto`);
       }
 
-      if (entrada.lote.fecha_expiracion < desde) {
-        throw new ErrorNegocio(409, `${posicion}: el lote esta vencido`);
+      const vencido = entrada.lote.fecha_expiracion !== null
+        && entrada.lote.fecha_expiracion < desde;
+      let datosVencido = null;
+
+      if (vencido) {
+        const diasVencido = diasEntre(fechaLocal(entrada.lote.fecha_expiracion), hoy);
+
+        if (!item.confirmar_vencido) {
+          throw new ErrorNegocio(
+            409,
+            `${posicion}: el lote vencio hace ${diasVencido} dia(s) y tiene ${entrada.disponible} ${producto.unidad_medida}; confirme con confirmar_vencido y motivo_vencido para sacarlo`
+          );
+        }
+
+        datosVencido = {
+          dias_vencido: diasVencido,
+          motivo_vencido: item.motivo_vencido
+        };
       }
 
       if (entrada.disponible < cantidad) {
@@ -122,7 +140,7 @@ const decidirOrigen = async (items, transaccion) => {
       }
 
       descontar(entrada, cantidad);
-      asignaciones.push({ lote: entrada.lote, cantidad });
+      asignaciones.push({ lote: entrada.lote, cantidad, ...datosVencido });
       continue;
     }
 
@@ -130,10 +148,13 @@ const decidirOrigen = async (items, transaccion) => {
       where: {
         producto_id: producto.id,
         cantidad_actual: { [Op.gt]: 0 },
-        fecha_expiracion: { [Op.gte]: desde }
+        [Op.or]: [
+          { fecha_expiracion: { [Op.gte]: desde } },
+          { fecha_expiracion: null }
+        ]
       },
       order: [
-        ['fecha_expiracion', 'ASC'],
+        [sequelize.literal('"fecha_expiracion" ASC NULLS LAST')],
         ['fecha_inventario_inicial', 'ASC']
       ],
       transaction: transaccion,
@@ -281,12 +302,14 @@ export const crearSalida = async (req, res) => {
         { transaction: transaccion }
       );
 
-      for (const { lote, cantidad } of asignaciones) {
+      for (const { lote, cantidad, dias_vencido, motivo_vencido } of asignaciones) {
         await DetalleSalidaAlmacen.create(
           {
             cantidad_salida: cantidad,
             inventario_almacen_lote_id: lote.id,
-            salida_almacen_id: salida.id
+            salida_almacen_id: salida.id,
+            dias_vencido: dias_vencido ?? null,
+            motivo_vencido: motivo_vencido ?? null
           },
           { transaction: transaccion }
         );

@@ -26,7 +26,7 @@ const TicketTransporteRegistro = sequelize.define(
     },
     nombre_solicitante: {
       type: DataTypes.STRING(150),
-      allowNull: false
+      allowNull: true
     },
     nro_ticket: {
       type: DataTypes.STRING(100),

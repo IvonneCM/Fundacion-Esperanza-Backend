@@ -9,6 +9,7 @@ import {
   actualizarCodigo,
   cambiarEstadoDocumento
 } from '../controllers/documentos.js';
+import { ejecutarOcr } from '../controllers/ocr-documentos.js';
 import { ESTADOS_OCR, ESTADOS_VALIDACION } from '../models/Documento.js';
 import { validarCampos } from '../middlewares/validar-campos.js';
 import { validarJWT } from '../middlewares/validar-jwt.js';
@@ -389,6 +390,51 @@ router.patch(
   body('estado').isIn(ESTADOS_VALIDACION).withMessage(`El estado debe ser uno de: ${ESTADOS_VALIDACION.join(', ')}`),
   validarCampos,
   cambiarEstadoDocumento
+);
+
+/**
+ * @openapi
+ * /api/documentos/{id}/ocr:
+ *   post:
+ *     tags: [Documentos]
+ *     summary: Extraer con OCR las filas de un documento de tickets
+ *     description: >
+ *       RF-07. Solo documentos de tipo `TICKETS` en imagen jpg/png. Envia la imagen a
+ *       Textract (sincrono), guarda `texto_ocr` y agrega las filas nuevas con
+ *       `estado_fila_validacion='pendiente'`. Nunca borra ni modifica filas existentes: una
+ *       fila ya guardada (mismo `nro_ticket`, o mismo nombre y fecha si no hay numero) se
+ *       omite. Los nombres y rutas se corrigen con los ya validados. `filas[].advertencias`
+ *       avisa de fechas fuera de orden, textos ilegibles o sin marca en IDA/RETORNO.
+ *       Solo `admin` y `archivista`.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: "`{ ok, msg, documento, extraidas, agregadas, omitidas, filas }`."
+ *       400:
+ *         description: Id invalido, tipo distinto de TICKETS o archivo que no es jpg/png.
+ *       403:
+ *         description: Rol sin permiso.
+ *       404:
+ *         description: Documento no encontrado.
+ *       422:
+ *         description: No se reconocio la tabla de tickets en la imagen.
+ *       502:
+ *         description: Textract no respondio; `estado_ocr` queda en `error`.
+ */
+router.post(
+  '/:id/ocr',
+  validarRol('admin', 'archivista'),
+  param('id').isUUID().withMessage('El id del documento debe ser un UUID valido'),
+  validarCampos,
+  ejecutarOcr
 );
 
 router.use('/:id/ficha-social', fichasSocialesRouter);

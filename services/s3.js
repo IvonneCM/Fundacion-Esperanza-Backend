@@ -46,6 +46,19 @@ export const obtenerUrlFirmada = async (
   return getSignedUrl(s3, comando, { expiresIn: expiraEn });
 };
 
+export const descargarArchivo = async (clave) => {
+  const respuesta = await s3.send(
+    new GetObjectCommand({
+      Bucket: bucket,
+      Key: clave
+    })
+  );
+
+  const bytes = await respuesta.Body.transformToByteArray();
+
+  return Buffer.from(bytes);
+};
+
 export const existeArchivo = async (clave) => {
   try {
     await s3.send(
